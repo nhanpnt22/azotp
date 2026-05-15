@@ -87,9 +87,9 @@ See `docs/AZOTP-Implementation-Spec.md` for the implemented package contract.
 
 ## Notes
 
-- Reference Mode is the default. It computes `blake3(azotp_server_secret + canonical_context_with_time_window)` and projects the digest into base26 lowercase output.
+- Reference Mode is the default. It computes `blake3(server_secret + canonical_context_with_time_window)` and projects the digest into base26 lowercase output.
 - `AZOTP_SERVER_SECRET` is supplied by the caller via `Config.ServerSecret` and defaults to `azotp` when empty.
 - Challenge IDs use the local `id57` package for 12-character human-readable identifiers.
 - Binding canonicalization is provider-aware and uses the same exact length-prefixed style used by the sibling deterministic packages.
 - Verification is single-attempt: wrong OTP, wrong binding, or expiry invalidates the challenge immediately, and OTP input is case-insensitive.
-- Random Mode remains available explicitly for fallback or interoperability flows.# azotp
+- Random Mode remains available explicitly for fallback or interoperability flows.
