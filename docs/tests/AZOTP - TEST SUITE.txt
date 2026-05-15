@@ -385,7 +385,7 @@ REQUIREMENTS:
 
 - MUST use CSPRNG
 - MUST ensure nonce uniqueness per challenge
-- MUST enforce single-use nonce
+- MUST enforce single-use nonce in service storage/transaction layer
 - MUST NOT reuse nonce under ANY condition
 
 FAILURE RESULT:

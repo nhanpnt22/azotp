@@ -103,7 +103,7 @@ PLATFORM_TYPE RULES:
 
 - MUST be lowercase
 - MUST be one of:
-  "web" | "ios" | "android" | "desktop" | "api" | "embedded" | "other"
+  "web" | "ios" | "android" | "desktop" | "embedded" | "other"
 
 ------------------------------------------------------------
 
@@ -294,6 +294,11 @@ REQUIREMENTS:
 - nonce MUST be cryptographically random
 - nonce MUST be unique per challenge
 - nonce MUST be single-use
+
+ENFORCEMENT BOUNDARY:
+
+- core package verifies binding + challenge single-use
+- nonce uniqueness MUST be enforced by service storage/transaction layer
 
 ------------------------------------------------------------
 

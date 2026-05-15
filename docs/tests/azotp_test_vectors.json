@@ -120,8 +120,8 @@
       "description": "case-sensitive input",
 
       "input": {
-        "stored_otp": "kqmx",
-        "input_otp": "KQMX"
+        "stored_otp": "6aWt",
+        "input_otp": "6AWT"
       },
 
       "expected": {
