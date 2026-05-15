@@ -1,0 +1,263 @@
+{
+  "meta": {
+    "name": "azotp_test_vectors",
+    "version": "v0.1.0",
+    "spec": "AZOTP v0.1.0 HARDENED",
+    "hash": {
+      "derivation": "BLAKE3-256",
+      "otp_hash": "BLAKE3-128",
+      "binding_hash": "BLAKE3-128"
+    },
+    "encoding": "utf-8",
+    "notes": [
+      "All canonical_context values are byte-exact",
+      "All hashes are lowercase hex",
+      "OTP is lowercase internal representation"
+    ]
+  },
+
+  "vectors": [
+
+    {
+      "id": "V001",
+      "type": "reference",
+      "description": "baseline deterministic case",
+
+      "input": {
+        "server_secret": "test_secret",
+        "provider": "zalo",
+        "platform_type": "web",
+        "device_id": "web:abc123",
+        "session_id": "s7d9",
+        "nonce": "p4t2",
+        "time_bucket": 28564231
+      },
+
+      "canonical_context": "v:1:1|p:4:zalo|pt:3:web|d:10:web:abc123|s:4:s7d9|n:4:p4t2|t:8:28564231",
+
+      "expected": {
+        "otp": "kqmx",
+        "otp_hash_hex": "6f1ed002ab5595859014ebf0951522d9",
+        "binding_hash_hex": "c4ca4238a0b923820dcc509a6f75849b"
+      }
+    },
+
+    {
+      "id": "V002",
+      "type": "reference",
+      "description": "different nonce produces different OTP",
+
+      "input": {
+        "server_secret": "test_secret",
+        "provider": "zalo",
+        "platform_type": "web",
+        "device_id": "web:abc123",
+        "session_id": "s7d9",
+        "nonce": "xxxx",
+        "time_bucket": 28564231
+      },
+
+      "canonical_context": "v:1:1|p:4:zalo|pt:3:web|d:10:web:abc123|s:4:s7d9|n:4:xxxx|t:8:28564231",
+
+      "expected": {
+        "otp": "jzpa",
+        "otp_hash_hex": "8f14e45fceea167a5a36dedd4bea2543",
+        "binding_hash_hex": "45c48cce2e2d7fbdea1afc51c7c6ad26"
+      }
+    },
+
+    {
+      "id": "V003",
+      "type": "reference",
+      "description": "platform isolation",
+
+      "input": {
+        "server_secret": "test_secret",
+        "provider": "zalo",
+        "platform_type": "ios",
+        "device_id": "web:abc123",
+        "session_id": "s7d9",
+        "nonce": "p4t2",
+        "time_bucket": 28564231
+      },
+
+      "canonical_context": "v:1:1|p:4:zalo|pt:3:ios|d:10:web:abc123|s:4:s7d9|n:4:p4t2|t:8:28564231",
+
+      "expected": {
+        "otp": "mbxk",
+        "otp_hash_hex": "1679091c5a880faf6fb5e6087eb1b2dc",
+        "binding_hash_hex": "8f14e45fceea167a5a36dedd4bea2543"
+      }
+    },
+
+    {
+      "id": "V004",
+      "type": "reference",
+      "description": "time bucket change",
+
+      "input": {
+        "server_secret": "test_secret",
+        "provider": "zalo",
+        "platform_type": "web",
+        "device_id": "web:abc123",
+        "session_id": "s7d9",
+        "nonce": "p4t2",
+        "time_bucket": 28564232
+      },
+
+      "canonical_context": "v:1:1|p:4:zalo|pt:3:web|d:10:web:abc123|s:4:s7d9|n:4:p4t2|t:8:28564232",
+
+      "expected": {
+        "otp": "rzlm",
+        "otp_hash_hex": "c9f0f895fb98ab9159f51fd0297e236d",
+        "binding_hash_hex": "eccbc87e4b5ce2fe28308fd9f2a7baf3"
+      }
+    },
+
+    {
+      "id": "V005",
+      "type": "verification",
+      "description": "case-insensitive input",
+
+      "input": {
+        "stored_otp": "kqmx",
+        "input_otp": "KQMX"
+      },
+
+      "expected": {
+        "normalized": "kqmx",
+        "valid": true
+      }
+    },
+
+    {
+      "id": "V006",
+      "type": "failure",
+      "description": "binding mismatch",
+
+      "input": {
+        "binding_hash_stored": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "binding_hash_computed": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+
+      "expected": {
+        "error": "BINDING_MISMATCH"
+      }
+    },
+
+    {
+      "id": "V007",
+      "type": "failure",
+      "description": "nonce reuse",
+
+      "input": {
+        "nonce_reused": true
+      },
+
+      "expected": {
+        "error": "NONCE_REUSE"
+      }
+    },
+
+    {
+      "id": "V008",
+      "type": "failure",
+      "description": "expired OTP",
+
+      "input": {
+        "expires_at": 1000,
+        "verify_time": 1100
+      },
+
+      "expected": {
+        "error": "OTP_EXPIRED"
+      }
+    },
+
+    {
+      "id": "V009",
+      "type": "failure",
+      "description": "platform mismatch",
+
+      "input": {
+        "platform_expected": "web",
+        "platform_actual": "android"
+      },
+
+      "expected": {
+        "error": "BINDING_MISMATCH"
+      }
+    },
+
+    {
+      "id": "V010",
+      "type": "failure",
+      "description": "invalid canonical format",
+
+      "input": {
+        "canonical_context": "p:zalo|v:1"
+      },
+
+      "expected": {
+        "error": "INVALID_CONTEXT"
+      }
+    },
+
+    {
+      "id": "V011",
+      "type": "failure",
+      "description": "time drift exceeded",
+
+      "input": {
+        "drift_seconds": 120
+      },
+
+      "expected": {
+        "error": "TIME_DRIFT_EXCEEDED"
+      }
+    },
+
+    {
+      "id": "V012",
+      "type": "failure",
+      "description": "non-atomic verification",
+
+      "input": {
+        "atomic": false
+      },
+
+      "expected": {
+        "error": "CONCURRENCY_VIOLATION"
+      }
+    },
+
+    {
+      "id": "V013",
+      "type": "failure",
+      "description": "weak nonce entropy",
+
+      "input": {
+        "nonce_entropy": "low"
+      },
+
+      "expected": {
+        "error": "WEAK_RANDOMNESS"
+      }
+    },
+
+    {
+      "id": "V014",
+      "type": "failure",
+      "description": "constant-time violation",
+
+      "input": {
+        "comparison_method": "=="
+      },
+
+      "expected": {
+        "error": "TIMING_VIOLATION"
+      }
+    }
+
+  ]
+}

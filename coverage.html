@@ -1,0 +1,669 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>azotp: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/nhanpnt22/azotp/azotp.go (79.0%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">// Package azotp implements the AZOTP v0.1.0 HARDENED cryptographically-strict
+// one-time password protocol with binding-secured, byte-level deterministic
+// derivation and replay-safe verification.
+//
+// Locked protocol traits (IMMUTABLE):
+//
+//   - OTP format: 4 lowercase letters (base26)
+//   - Deterministic derivation hash: BLAKE3-256
+//   - Stored hash size: BLAKE3-128 (16 bytes exact)
+//   - Binding hash: BLAKE3-128 of canonical context
+//   - Visible expiry: 60s
+//   - Backend grace window: 90s
+//   - Validation attempts per OTP: exactly 1 (single-use)
+//   - Binding: provider + device_id + session_id + nonce + time_bucket
+//   - Canonical format: v1|&lt;len&gt;:&lt;value&gt;|&lt;len&gt;:&lt;value&gt;|...
+//   - Constant-time comparison: REQUIRED
+//   - Replay protection: binding_hash + nonce uniqueness + single-use
+package azotp
+
+import (
+        "crypto/subtle"
+        "errors"
+        "fmt"
+        "io"
+        "math/big"
+        "strings"
+        "time"
+
+        "github.com/nhanpnt22/id57"
+        "lukechampine.com/blake3"
+)
+
+const (
+        Version           = "v0.1.0"
+        ProtocolVersion   = "1"
+        Alphabet          = "abcdefghijklmnopqrstuvwxyz"
+        OTPLength         = 4
+        ChallengeIDLength = 12
+        VisibleExpiry     = 60 * time.Second
+        GraceWindow       = 90 * time.Second
+        WindowStep        = 60 * time.Second
+        MaxBindingLength  = 256
+        DefaultSecret     = "azotp"
+        BindingHashSize   = 16 // BLAKE3-128: 16 bytes exact
+        OTPHashSize       = 16 // BLAKE3-128: 16 bytes exact
+)
+
+var otpBase = big.NewInt(int64(len(Alphabet)))
+
+var validPlatformTypes = map[string]struct{}{
+        "web":      {},
+        "ios":      {},
+        "android":  {},
+        "desktop":  {},
+        "api":      {},
+        "embedded": {},
+        "other":    {},
+}
+
+type Mode string
+
+const (
+        ModeReference Mode = "reference"
+        ModeRandom    Mode = "random"
+)
+
+type State string
+
+const (
+        StatePending     State = "pending"
+        StateVerified    State = "verified"
+        StateInvalidated State = "invalidated"
+)
+
+var (
+        alphabetSet [256]bool
+
+        ErrInvalidOTP        = errors.New("azotp: invalid otp")
+        ErrChallengeRequired = errors.New("azotp: challenge is required")
+        ErrBindingRequired   = errors.New("azotp: binding is required")
+        ErrBindingMismatch   = errors.New("azotp: binding mismatch")
+        ErrContextRequired   = errors.New("azotp: context is required")
+        ErrOTPRejected       = errors.New("azotp: otp rejected")
+        ErrOTPExpired        = errors.New("azotp: otp expired")
+        ErrOTPUsed           = errors.New("azotp: otp already used")
+        ErrOTPInvalidated    = errors.New("azotp: otp invalidated")
+        ErrEntropyDepleted   = errors.New("azotp: entropy source exhausted")
+)
+
+func init() <span class="cov8" title="1">{
+        for index := 0; index &lt; len(Alphabet); index++ </span><span class="cov8" title="1">{
+                alphabetSet[Alphabet[index]] = true
+        }</span>
+}
+
+// blake3_128 computes BLAKE3-128 (first 16 bytes of BLAKE3-256)
+func blake3_128(data []byte) [BindingHashSize]byte <span class="cov8" title="1">{
+        digest := blake3.Sum256(data)
+        var result [BindingHashSize]byte
+        copy(result[:], digest[:BindingHashSize])
+        return result
+}</span>
+
+// constantTimeEqual performs constant-time comparison of two byte slices
+// to prevent timing side-channel attacks on OTP verification.
+func constantTimeEqual(a, b []byte) bool <span class="cov8" title="1">{
+        return subtle.ConstantTimeCompare(a, b) == 1
+}</span>
+
+type Binding struct {
+        Provider     string
+        PlatformType string
+        SessionID    string
+        DeviceID     string
+        Nonce        string
+}
+
+type Config struct {
+        ServerSecret string
+}
+
+func DefaultConfig() Config <span class="cov8" title="1">{
+        return Config{ServerSecret: DefaultSecret}
+}</span>
+
+func (config Config) serverSecret() string <span class="cov8" title="1">{
+        if strings.TrimSpace(config.ServerSecret) == "" </span><span class="cov8" title="1">{
+                return DefaultSecret
+        }</span>
+
+        <span class="cov8" title="1">return config.ServerSecret</span>
+}
+
+type Challenge struct {
+        ID               string
+        Mode             Mode
+        Context          string // Canonical context string
+        OTP              string // Plaintext OTP for reference (internal only)
+        OTPHash          []byte // BLAKE3-128 hash of OTP (16 bytes)
+        BindingHash      []byte // BLAKE3-128 hash of canonical context (16 bytes)
+        Binding          Binding
+        IssuedAt         time.Time
+        VisibleExpiresAt time.Time
+        GraceExpiresAt   time.Time
+
+        state         State
+        AttemptedAt   time.Time
+        VerifiedAt    time.Time
+        InvalidatedAt time.Time
+}
+
+func Validate(value string) error <span class="cov8" title="1">{
+        _, err := normalizeOTP(value)
+        return err
+}</span>
+
+func IsValid(value string) bool <span class="cov0" title="0">{
+        return Validate(value) == nil
+}</span>
+
+func ValidateBinding(binding Binding) error <span class="cov8" title="1">{
+        if err := validateBindingPart("provider", binding.Provider); err != nil </span><span class="cov8" title="1">{
+                return err
+        }</span>
+        <span class="cov8" title="1">if err := validatePlatformType(binding.PlatformType); err != nil </span><span class="cov8" title="1">{
+                return err
+        }</span>
+        <span class="cov8" title="1">if err := validateBindingPart("session_id", binding.SessionID); err != nil </span><span class="cov8" title="1">{
+                return err
+        }</span>
+        <span class="cov8" title="1">if err := validateBindingPart("device_id", binding.DeviceID); err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+        <span class="cov8" title="1">if err := validateBindingPart("nonce", binding.Nonce); err != nil </span><span class="cov8" title="1">{
+                return err
+        }</span>
+
+        <span class="cov8" title="1">return nil</span>
+}
+
+func CanonicalBindingInput(binding Binding, now time.Time) (string, error) <span class="cov8" title="1">{
+        if err := ValidateBinding(binding); err != nil </span><span class="cov0" title="0">{
+                return "", err
+        }</span>
+
+        <span class="cov8" title="1">timeBucket := fmt.Sprintf("%d", TimeWindow(now))
+
+        // Strict field order: version, provider, platform_type, device_id,
+        // session_id, nonce, time_bucket.
+        return fmt.Sprintf(
+                "v:%d:%s|p:%d:%s|pt:%d:%s|d:%d:%s|s:%d:%s|n:%d:%s|t:%d:%s",
+                len(ProtocolVersion), ProtocolVersion,
+                len(binding.Provider), binding.Provider,
+                len(binding.PlatformType), binding.PlatformType,
+                len(binding.DeviceID), binding.DeviceID,
+                len(binding.SessionID), binding.SessionID,
+                len(binding.Nonce), binding.Nonce,
+                len(timeBucket), timeBucket,
+        ), nil</span>
+}
+
+// CanonicalContextWithTimeBucket includes the time_bucket in the canonical context.
+// This is used for binding hash computation and reference mode OTP generation.
+func CanonicalContextWithTimeBucket(binding Binding, now time.Time) (string, error) <span class="cov0" title="0">{
+        return CanonicalBindingInput(binding, now)
+}</span>
+
+func TimeWindow(now time.Time) int64 <span class="cov8" title="1">{
+        return now.Unix() / int64(WindowStep/time.Second)
+}</span>
+
+func ValidateContext(context string) error <span class="cov8" title="1">{
+        if strings.TrimSpace(context) != context || context == "" </span><span class="cov8" title="1">{
+                return ErrContextRequired
+        }</span>
+
+        <span class="cov8" title="1">return nil</span>
+}
+
+func CanonicalReferenceInput(context string, now time.Time) (string, error) <span class="cov8" title="1">{
+        if err := ValidateContext(context); err != nil </span><span class="cov0" title="0">{
+                return "", err
+        }</span>
+        <span class="cov8" title="1">_ = now
+
+        // Deterministic derivation consumes caller-provided canonical context bytes.
+        return context, nil</span>
+}
+
+func GenerateReference(context string, now time.Time, config Config) (string, error) <span class="cov8" title="1">{
+        return GenerateWithSecret(context, config.serverSecret(), now)
+}</span>
+
+func Generate(context string, now time.Time) (string, error) <span class="cov8" title="1">{
+        return GenerateReference(context, now, DefaultConfig())
+}</span>
+
+func GenerateWithSecret(context, serverSecret string, now time.Time) (string, error) <span class="cov8" title="1">{
+        return generateReferenceWithSecret(context, serverSecret, now)
+}</span>
+
+func MustGenerate(context string, now time.Time) string <span class="cov0" title="0">{
+        value, err := Generate(context, now)
+        if err != nil </span><span class="cov0" title="0">{
+                panic(err)</span>
+        }
+
+        <span class="cov0" title="0">return value</span>
+}
+
+func GenerateRandom(reader io.Reader) (string, error) <span class="cov8" title="1">{
+        if reader == nil </span><span class="cov0" title="0">{
+                reader = strings.NewReader("")
+        }</span>
+
+        <span class="cov8" title="1">buffer := make([]byte, OTPLength)
+        index := 0
+        for index &lt; OTPLength </span><span class="cov8" title="1">{
+                value, err := readAlphabetByte(reader)
+                if err != nil </span><span class="cov8" title="1">{
+                        return "", err
+                }</span>
+                <span class="cov8" title="1">buffer[index] = value
+                index++</span>
+        }
+
+        <span class="cov8" title="1">return string(buffer), nil</span>
+}
+
+func MustGenerateRandom(reader io.Reader) string <span class="cov0" title="0">{
+        value, err := GenerateRandom(reader)
+        if err != nil </span><span class="cov0" title="0">{
+                panic(err)</span>
+        }
+
+        <span class="cov0" title="0">return value</span>
+}
+
+func IssueReference(binding Binding, now time.Time, reader io.Reader, config Config) (*Challenge, error) <span class="cov8" title="1">{
+        if err := ValidateBinding(binding); err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">if reader == nil </span><span class="cov0" title="0">{
+                return nil, ErrEntropyDepleted
+        }</span>
+
+        <span class="cov8" title="1">id, err := generateChallengeID(reader)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        // Generate OTP using canonical context with time_bucket.
+        <span class="cov8" title="1">bindingContext, err := CanonicalBindingInput(binding, now)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov8" title="1">otp, err := GenerateReference(bindingContext, now, config)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov8" title="1">return newChallenge(ModeReference, bindingContext, binding, id, otp, now), nil</span>
+}
+
+func Issue(binding Binding, now time.Time, reader io.Reader) (*Challenge, error) <span class="cov8" title="1">{
+        return IssueReference(binding, now, reader, DefaultConfig())
+}</span>
+
+func IssueRandom(binding Binding, now time.Time, reader io.Reader) (*Challenge, error) <span class="cov8" title="1">{
+        if err := ValidateBinding(binding); err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">if reader == nil </span><span class="cov0" title="0">{
+                return nil, ErrEntropyDepleted
+        }</span>
+
+        <span class="cov8" title="1">id, err := generateChallengeID(reader)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">otp, err := GenerateRandom(reader)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov8" title="1">bindingContext, err := CanonicalBindingInput(binding, now)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov8" title="1">return newChallenge(ModeRandom, bindingContext, binding, id, otp, now), nil</span>
+}
+
+func (challenge *Challenge) Verify(otp string, binding Binding, now time.Time) error <span class="cov8" title="1">{
+        if challenge == nil </span><span class="cov0" title="0">{
+                return ErrChallengeRequired
+        }</span>
+
+        <span class="cov8" title="1">switch challenge.state </span>{
+        case StateVerified:<span class="cov8" title="1">
+                return ErrOTPUsed</span>
+        case StateInvalidated:<span class="cov8" title="1">
+                return ErrOTPInvalidated</span>
+        }
+
+        <span class="cov8" title="1">if !now.Before(challenge.GraceExpiresAt) </span><span class="cov8" title="1">{
+                challenge.invalidate(now)
+                return ErrOTPExpired
+        }</span>
+
+        <span class="cov8" title="1">if err := ValidateBinding(binding); err != nil </span><span class="cov0" title="0">{
+                challenge.invalidate(now)
+                return err
+        }</span>
+
+        // Verify binding hash first for replay protection
+        <span class="cov8" title="1">recomputedContext, err := CanonicalBindingInput(binding, challenge.IssuedAt)
+        if err != nil </span><span class="cov0" title="0">{
+                challenge.invalidate(now)
+                return err
+        }</span>
+
+        // Compute binding hash for verification
+        <span class="cov8" title="1">bindingHashInput := recomputedContext
+        recomputedHash := blake3_128([]byte(bindingHashInput))
+
+        // Constant-time comparison of binding hashes
+        if !constantTimeEqual(recomputedHash[:], challenge.BindingHash) </span><span class="cov8" title="1">{
+                challenge.invalidate(now)
+                return ErrBindingMismatch
+        }</span>
+
+        <span class="cov8" title="1">normalizedOTP, err := normalizeOTP(otp)
+        if err != nil </span><span class="cov0" title="0">{
+                challenge.invalidate(now)
+                return err
+        }</span>
+
+        // Compute OTP hash for constant-time comparison
+        <span class="cov8" title="1">otpHash := blake3_128([]byte(normalizedOTP))
+
+        // Constant-time OTP comparison
+        if !constantTimeEqual(otpHash[:], challenge.OTPHash) </span><span class="cov8" title="1">{
+                challenge.invalidate(now)
+                return ErrOTPRejected
+        }</span>
+
+        <span class="cov8" title="1">challenge.state = StateVerified
+        challenge.AttemptedAt = now
+        challenge.VerifiedAt = now
+        return nil</span>
+}
+
+func (challenge *Challenge) State() State <span class="cov8" title="1">{
+        if challenge == nil </span><span class="cov0" title="0">{
+                return StateInvalidated
+        }</span>
+
+        <span class="cov8" title="1">return challenge.state</span>
+}
+
+func (challenge *Challenge) IsVisibleExpired(now time.Time) bool <span class="cov8" title="1">{
+        if challenge == nil </span><span class="cov0" title="0">{
+                return true
+        }</span>
+
+        <span class="cov8" title="1">return !now.Before(challenge.VisibleExpiresAt)</span>
+}
+
+func (challenge *Challenge) IsGraceExpired(now time.Time) bool <span class="cov8" title="1">{
+        if challenge == nil </span><span class="cov0" title="0">{
+                return true
+        }</span>
+
+        <span class="cov8" title="1">return !now.Before(challenge.GraceExpiresAt)</span>
+}
+
+func Cooldown(sequence int) time.Duration <span class="cov8" title="1">{
+        switch </span>{
+        case sequence &lt;= 0:<span class="cov8" title="1">
+                return 0</span>
+        case sequence == 1:<span class="cov8" title="1">
+                return 60 * time.Second</span>
+        case sequence == 2:<span class="cov8" title="1">
+                return 5 * time.Minute</span>
+        case sequence == 3:<span class="cov8" title="1">
+                return 15 * time.Minute</span>
+        default:<span class="cov8" title="1">
+                return time.Hour</span>
+        }
+}
+
+func (challenge *Challenge) invalidate(now time.Time) <span class="cov8" title="1">{
+        challenge.state = StateInvalidated
+        challenge.AttemptedAt = now
+        challenge.InvalidatedAt = now
+}</span>
+
+func otpFromDigest(digest []byte) (string, error) <span class="cov8" title="1">{
+        number := new(big.Int).SetBytes(digest)
+        modulus := new(big.Int)
+        buffer := make([]byte, OTPLength)
+
+        for index := 0; index &lt; OTPLength; index++ </span><span class="cov8" title="1">{
+                number.DivMod(number, otpBase, modulus)
+                buffer[index] = Alphabet[modulus.Int64()]
+        }</span>
+
+        <span class="cov8" title="1">value := string(buffer)
+        if err := Validate(value); err != nil </span><span class="cov0" title="0">{
+                return "", err
+        }</span>
+
+        <span class="cov8" title="1">return value, nil</span>
+}
+
+func generateReferenceWithSecret(context, serverSecret string, now time.Time) (string, error) <span class="cov8" title="1">{
+        canonical, err := CanonicalReferenceInput(context, now)
+        if err != nil </span><span class="cov0" title="0">{
+                return "", err
+        }</span>
+
+        // Deterministic mode derives OTP from BLAKE3-256(secret + canonical_context).
+        <span class="cov8" title="1">fullInput := serverSecret + canonical
+        digest := blake3.Sum256([]byte(fullInput))
+        return otpFromDigest(digest[:])</span>
+}
+
+func newChallenge(mode Mode, context string, binding Binding, id, otp string, now time.Time) *Challenge <span class="cov8" title="1">{
+        // Compute OTP hash (BLAKE3-128)
+        otpHash := blake3_128([]byte(otp))
+
+        // Compute binding hash from context (BLAKE3-128)
+        // For reference mode, context is canonical binding input
+        bindingHashInput := context
+        if bindingHashInput == "" </span><span class="cov0" title="0">{
+                // For random mode, compute from binding
+                if ctx, err := CanonicalBindingInput(binding, now); err == nil </span><span class="cov0" title="0">{
+                        bindingHashInput = ctx
+                }</span>
+        }
+        <span class="cov8" title="1">bindingHash := blake3_128([]byte(bindingHashInput))
+
+        return &amp;Challenge{
+                ID:               id,
+                Mode:             mode,
+                Context:          context,
+                OTP:              otp, // Plaintext OTP (for reference only)
+                OTPHash:          otpHash[:],
+                BindingHash:      bindingHash[:],
+                Binding:          binding,
+                IssuedAt:         now,
+                VisibleExpiresAt: now.Add(VisibleExpiry),
+                GraceExpiresAt:   now.Add(GraceWindow),
+                state:            StatePending,
+        }</span>
+}
+
+func generateChallengeID(reader io.Reader) (string, error) <span class="cov8" title="1">{
+        entropy := make([]byte, 16)
+        if _, err := io.ReadFull(reader, entropy); err != nil </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("%w: %v", ErrEntropyDepleted, err)
+        }</span>
+
+        <span class="cov8" title="1">return id57.FromDigest(entropy, ChallengeIDLength)</span>
+}
+
+func readAlphabetByte(reader io.Reader) (byte, error) <span class="cov8" title="1">{
+        var sample [1]byte
+        for </span><span class="cov8" title="1">{
+                if _, err := io.ReadFull(reader, sample[:]); err != nil </span><span class="cov8" title="1">{
+                        return 0, fmt.Errorf("%w: %v", ErrEntropyDepleted, err)
+                }</span>
+                <span class="cov8" title="1">if sample[0] &gt;= 234 </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+                <span class="cov8" title="1">return Alphabet[int(sample[0])%len(Alphabet)], nil</span>
+        }
+}
+
+func validateBindingPart(name, value string) error <span class="cov8" title="1">{
+        if strings.TrimSpace(value) != value || value == "" </span><span class="cov8" title="1">{
+                return fmt.Errorf("%w: %s must be non-empty and trimmed", ErrBindingRequired, name)
+        }</span>
+        <span class="cov8" title="1">if len(value) &gt; MaxBindingLength </span><span class="cov0" title="0">{
+                return fmt.Errorf("%w: %s exceeds %d bytes", ErrBindingRequired, name, MaxBindingLength)
+        }</span>
+
+        <span class="cov8" title="1">return nil</span>
+}
+
+func validatePlatformType(value string) error <span class="cov8" title="1">{
+        if err := validateBindingPart("platform_type", value); err != nil </span><span class="cov8" title="1">{
+                return err
+        }</span>
+        <span class="cov8" title="1">if value != strings.ToLower(value) </span><span class="cov8" title="1">{
+                return fmt.Errorf("%w: platform_type must be lowercase", ErrBindingRequired)
+        }</span>
+        <span class="cov8" title="1">if _, ok := validPlatformTypes[value]; !ok </span><span class="cov8" title="1">{
+                return fmt.Errorf("%w: platform_type must be one of web|ios|android|desktop|api|embedded|other", ErrBindingRequired)
+        }</span>
+
+        <span class="cov8" title="1">return nil</span>
+}
+
+func normalizeOTP(value string) (string, error) <span class="cov8" title="1">{
+        if len(value) != OTPLength </span><span class="cov8" title="1">{
+                return "", fmt.Errorf("%w: length must be %d", ErrInvalidOTP, OTPLength)
+        }</span>
+
+        <span class="cov8" title="1">buffer := make([]byte, OTPLength)
+        for index := 0; index &lt; len(value); index++ </span><span class="cov8" title="1">{
+                ch := value[index]
+                switch </span>{
+                case ch &gt;= 'a' &amp;&amp; ch &lt;= 'z':<span class="cov8" title="1">
+                        buffer[index] = ch</span>
+                case ch &gt;= 'A' &amp;&amp; ch &lt;= 'Z':<span class="cov8" title="1">
+                        buffer[index] = ch + ('a' - 'A')</span>
+                default:<span class="cov8" title="1">
+                        return "", fmt.Errorf("%w: character %q at index %d", ErrInvalidOTP, value[index], index)</span>
+                }
+        }
+
+        <span class="cov8" title="1">return string(buffer), nil</span>
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

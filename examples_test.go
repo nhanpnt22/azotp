@@ -66,8 +66,8 @@ func expectedOTP(t *testing.T, config azotp.Config) string {
 	t.Helper()
 
 	now := time.Unix(1_747_180_800, 0).UTC()
-	binding := azotp.Binding{Provider: "zalo", DeviceID: "device-abc123", SessionID: "sess-x7d9", Nonce: "nonce-p4t2"}
-	context, err := azotp.CanonicalBindingInput(binding)
+	binding := azotp.Binding{Provider: "zalo", PlatformType: "web", DeviceID: "device-abc123", SessionID: "sess-x7d9", Nonce: "nonce-p4t2"}
+	context, err := azotp.CanonicalBindingInput(binding, now)
 	if err != nil {
 		t.Fatalf("CanonicalBindingInput: unexpected error: %v", err)
 	}

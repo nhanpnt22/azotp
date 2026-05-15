@@ -1,0 +1,444 @@
+============================================================
+AZOTP TEST SUITE
+v0.1.0
+============================================================
+
+STATUS
+------------------------------------------------------------
+FINAL • HARDENED • COMPLETE • PRODUCTION-ENFORCED
+
+TYPE
+------------------------------------------------------------
+Test Specification (Mandatory Validation Layer)
+
+============================================================
+I. PURPOSE
+============================================================
+
+This test suite defines REQUIRED validation coverage for
+AZOTP v0.1.0 HARDENED.
+
+It guarantees:
+
+- deterministic correctness
+- cross-language consistency
+- replay safety enforcement
+- implementation integrity
+
+------------------------------------------------------------
+
+RULE:
+
+ALL implementations MUST pass ALL tests.
+
+ANY failure → SYSTEM INVALID
+
+============================================================
+II. CANONICALIZATION TESTS
+============================================================
+
+TEST CASES:
+
+1. Same input → identical byte sequence
+2. Field order deviation → FAIL
+3. Length mismatch → FAIL
+4. Encoding mismatch (UTF-8 vs others) → FAIL
+5. Hidden trimming → FAIL
+
+------------------------------------------------------------
+
+ASSERT:
+
+canonical_context_bytes MUST match EXACTLY
+
+============================================================
+III. OTP GENERATION TESTS
+============================================================
+
+A. REFERENCE MODE
+
+- same input + same time_bucket → SAME OTP
+- different nonce → DIFFERENT OTP
+- different platform_type → DIFFERENT OTP
+
+B. RANDOM MODE
+
+- OTP length == 4
+- characters ∈ [a-z]
+- entropy source MUST be CSPRNG
+
+------------------------------------------------------------
+
+ASSERT:
+
+deterministic integrity + randomness correctness
+
+============================================================
+IV. GOLDEN VECTOR TESTS
+============================================================
+
+REQUIRED:
+
+- fixed inputs
+- fixed expected OTP
+- fixed expected hashes
+
+------------------------------------------------------------
+
+ASSERT:
+
+ALL languages MUST produce identical outputs
+
+============================================================
+V. HASH INTEGRITY TESTS
+============================================================
+
+- otp_hash length == 16 bytes
+- binding_hash length == 16 bytes
+- hashing algorithm == BLAKE3-128
+
+------------------------------------------------------------
+
+FAIL IF:
+
+- incorrect length
+- incorrect algorithm
+- inconsistent encoding
+
+============================================================
+VI. VERIFICATION TESTS
+============================================================
+
+SUCCESS CASE:
+
+- correct OTP → success
+- used flag → true
+
+FAILURE CASES:
+
+- wrong OTP → FAIL + used = true
+- expired OTP → FAIL
+- reused OTP → FAIL
+- binding mismatch → FAIL
+
+------------------------------------------------------------
+
+ASSERT:
+
+single-use enforced ALWAYS
+
+============================================================
+VII. TIME MODEL TESTS
+============================================================
+
+- time_bucket = floor(unix_time / 60)
+- boundary at 59s → valid
+- boundary at 60s → new bucket
+- grace window (≤90s) → accepted
+- >90s → rejected
+
+------------------------------------------------------------
+
+ASSERT:
+
+consistent time behavior across systems
+
+============================================================
+VIII. CONSTANT-TIME TESTS
+============================================================
+
+- equal values → constant time
+- unequal values → constant time
+
+------------------------------------------------------------
+
+FORBIDDEN:
+
+- early return
+- == operator
+
+------------------------------------------------------------
+
+ASSERT:
+
+no timing variance detectable
+
+============================================================
+IX. NONCE TESTS
+============================================================
+
+- unique nonce → success
+- reused nonce → FAIL
+
+------------------------------------------------------------
+
+ASSERT:
+
+nonce reuse ALWAYS rejected
+
+============================================================
+X. DEVICE + PLATFORM TESTS
+============================================================
+
+- same device_id → valid
+- different device_id → FAIL
+- same platform_type → valid
+- different platform_type → FAIL
+
+------------------------------------------------------------
+
+ASSERT:
+
+platform + device isolation enforced
+
+============================================================
+XI. CONCURRENCY TESTS
+============================================================
+
+- parallel verification attempts
+- only ONE success allowed
+
+------------------------------------------------------------
+
+ASSERT:
+
+atomic update enforced
+
+FAIL IF:
+
+- multiple successes occur
+
+============================================================
+XII. RATE LIMIT TESTS
+============================================================
+
+- repeated requests → throttled
+- excessive attempts → blocked
+
+------------------------------------------------------------
+
+ASSERT:
+
+rate limiting enforced per:
+
+- identity_key
+- device_id
+- IP
+
+============================================================
+XIII. FAILURE INJECTION TESTS
+============================================================
+
+SIMULATE:
+
+- clock drift > ±30s → FAIL
+- missing binding_hash → FAIL
+- modified context → FAIL
+- partial DB write → FAIL
+
+------------------------------------------------------------
+
+ASSERT:
+
+FAIL CLOSED ALWAYS
+
+============================================================
+XIV. END-TO-END TESTS
+============================================================
+
+FLOW:
+
+1. init challenge
+2. generate OTP
+3. verify OTP
+4. issue token
+
+------------------------------------------------------------
+
+ASSERT:
+
+full system correctness
+
+============================================================
+XV. CROSS-SERVICE TESTS
+============================================================
+
+- multiple services (Go / Node / Rust / etc.)
+- identical inputs
+
+------------------------------------------------------------
+
+ASSERT:
+
+identical outputs across ALL services
+
+============================================================
+XVI. FINAL INVARIANT
+============================================================
+
+SYSTEM MUST PASS:
+
+- canonicalization tests
+- generation tests
+- verification tests
+- concurrency tests
+- replay tests
+
+============================================================
+XVIII. IMPLEMENTATION RISK SURFACE (NON-SPEC)
+============================================================
+
+This section defines CRITICAL implementation risks that are
+NOT protocol design flaws, but WILL break AZOTP security
+guarantees if mishandled.
+
+These risks are MANDATORY to mitigate.
+
+------------------------------------------------------------
+
+1. NON-ATOMIC DATABASE OPERATIONS
+
+RISK:
+
+- race conditions during verification
+- multiple successful OTP validations
+
+REQUIREMENTS:
+
+- verification MUST run inside a transaction
+- MUST use SELECT FOR UPDATE (or equivalent locking)
+- MUST ensure atomic mutation of:
+  - used flag
+  - attempt state
+
+FAILURE RESULT:
+
+→ MULTIPLE SUCCESSFUL AUTHENTICATIONS
+→ REPLAY POSSIBLE
+→ SYSTEM INVALID
+
+------------------------------------------------------------
+
+2. INCORRECT CONSTANT-TIME COMPARISON
+
+RISK:
+
+- timing side-channel leakage
+- OTP inference via latency attacks
+
+REQUIREMENTS:
+
+- MUST use constant_time_equal
+- MUST operate on fixed-length byte arrays
+- MUST NOT use:
+  - ==
+  - early return comparisons
+
+FAILURE RESULT:
+
+→ OTP LEAKAGE
+→ PREDICTION ATTACKS POSSIBLE
+→ SYSTEM INVALID
+
+------------------------------------------------------------
+
+3. INCONSISTENT CANONICALIZATION ACROSS SERVICES
+
+RISK:
+
+- different byte sequences for identical logical input
+- OTP mismatch between services
+
+REQUIREMENTS:
+
+- MUST enforce identical canonical encoding across systems
+- MUST use UTF-8 byte-length consistently
+- MUST NOT:
+  - trim inputs
+  - normalize strings
+  - mutate values
+- MUST share identical formatting logic across languages
+
+FAILURE RESULT:
+
+→ VALID OTP REJECTED
+→ CROSS-SERVICE FAILURE
+→ SYSTEM INVALID
+
+------------------------------------------------------------
+
+4. WEAK RANDOMNESS IN NONCE
+
+RISK:
+
+- nonce predictability
+- replay or precomputation attacks
+
+REQUIREMENTS:
+
+- MUST use CSPRNG
+- MUST ensure nonce uniqueness per challenge
+- MUST enforce single-use nonce
+- MUST NOT reuse nonce under ANY condition
+
+FAILURE RESULT:
+
+→ REPLAY ATTACK POSSIBLE
+→ BINDING BREAK
+→ SYSTEM INVALID
+
+------------------------------------------------------------
+
+5. TIME DRIFT NOT ENFORCED
+
+RISK:
+
+- inconsistent time_bucket calculation
+- false acceptance or false rejection
+
+REQUIREMENTS:
+
+- MUST synchronize clocks using NTP
+- MUST enforce drift ≤ ±30 seconds
+- MUST ensure consistent time source across all services
+
+FAILURE RESULT:
+
+→ OTP VALIDATION FAILURE
+→ CROSS-SERVICE INCONSISTENCY
+→ SYSTEM INVALID
+
+============================================================
+GLOBAL RULE
+============================================================
+
+ALL implementation risks defined above MUST be mitigated.
+
+These are NOT optional.
+
+Violation of ANY requirement:
+
+→ VOIDS AZOTP SECURITY GUARANTEES
+→ SYSTEM MUST BE CONSIDERED INVALID
+
+============================================================
+END OF SECTION
+============================================================
+
+------------------------------------------------------------
+
+IF ANY FAIL:
+
+→ SYSTEM INVALID
+
+============================================================
+FINAL STATEMENT
+============================================================
+
+AZOTP TEST SUITE v0.1.0 HARDENED enforces full protocol
+correctness, cross-language determinism, and replay-safe
+behavior for all AZOTP implementations.
+
+============================================================
+END OF TEST SUITE
+============================================================

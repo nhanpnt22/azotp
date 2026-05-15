@@ -14,10 +14,11 @@ func main() {
 	config := loadConfigFromEnvironment()
 	now := time.Unix(1_747_180_800, 0).UTC()
 	binding := azotp.Binding{
-		Provider:  "zalo",
-		SessionID: "sess-x7d9",
-		DeviceID:  "device-abc123",
-		Nonce:     "nonce-p4t2",
+		Provider:     "zalo",
+		PlatformType: "web",
+		SessionID:    "sess-x7d9",
+		DeviceID:     "device-abc123",
+		Nonce:        "nonce-p4t2",
 	}
 
 	challenge, err := issueChallenge(config, binding, now)

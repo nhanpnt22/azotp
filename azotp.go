@@ -5,7 +5,8 @@
 // Locked protocol traits (IMMUTABLE):
 //
 //   - OTP format: 4 lowercase letters (base26)
-//   - Hash function: BLAKE3-128 (16 bytes exact)
+//   - Deterministic derivation hash: BLAKE3-256
+//   - Stored hash size: BLAKE3-128 (16 bytes exact)
 //   - Binding hash: BLAKE3-128 of canonical context
 //   - Visible expiry: 60s
 //   - Backend grace window: 90s
@@ -31,7 +32,7 @@ import (
 
 const (
 	Version           = "v0.1.0"
-	ProtocolVersion   = "v1"
+	ProtocolVersion   = "1"
 	Alphabet          = "abcdefghijklmnopqrstuvwxyz"
 	OTPLength         = 4
 	ChallengeIDLength = 12
@@ -42,11 +43,19 @@ const (
 	DefaultSecret     = "azotp"
 	BindingHashSize   = 16 // BLAKE3-128: 16 bytes exact
 	OTPHashSize       = 16 // BLAKE3-128: 16 bytes exact
-
-	canonicalPrefix = ProtocolVersion + "|"
 )
 
 var otpBase = big.NewInt(int64(len(Alphabet)))
+
+var validPlatformTypes = map[string]struct{}{
+	"web":      {},
+	"ios":      {},
+	"android":  {},
+	"desktop":  {},
+	"api":      {},
+	"embedded": {},
+	"other":    {},
+}
 
 type Mode string
 
@@ -99,10 +108,11 @@ func constantTimeEqual(a, b []byte) bool {
 }
 
 type Binding struct {
-	Provider  string
-	SessionID string
-	DeviceID  string
-	Nonce     string
+	Provider     string
+	PlatformType string
+	SessionID    string
+	DeviceID     string
+	Nonce        string
 }
 
 type Config struct {
@@ -152,6 +162,9 @@ func ValidateBinding(binding Binding) error {
 	if err := validateBindingPart("provider", binding.Provider); err != nil {
 		return err
 	}
+	if err := validatePlatformType(binding.PlatformType); err != nil {
+		return err
+	}
 	if err := validateBindingPart("session_id", binding.SessionID); err != nil {
 		return err
 	}
@@ -165,33 +178,31 @@ func ValidateBinding(binding Binding) error {
 	return nil
 }
 
-func CanonicalBindingInput(binding Binding) (string, error) {
+func CanonicalBindingInput(binding Binding, now time.Time) (string, error) {
 	if err := ValidateBinding(binding); err != nil {
 		return "", err
 	}
 
-	// Strict field order: provider, device, session, nonce
+	timeBucket := fmt.Sprintf("%d", TimeWindow(now))
+
+	// Strict field order: version, provider, platform_type, device_id,
+	// session_id, nonce, time_bucket.
 	return fmt.Sprintf(
-		"%s%d:%s|%d:%s|%d:%s|%d:%s",
-		canonicalPrefix,
+		"v:%d:%s|p:%d:%s|pt:%d:%s|d:%d:%s|s:%d:%s|n:%d:%s|t:%d:%s",
+		len(ProtocolVersion), ProtocolVersion,
 		len(binding.Provider), binding.Provider,
+		len(binding.PlatformType), binding.PlatformType,
 		len(binding.DeviceID), binding.DeviceID,
 		len(binding.SessionID), binding.SessionID,
 		len(binding.Nonce), binding.Nonce,
+		len(timeBucket), timeBucket,
 	), nil
 }
 
 // CanonicalContextWithTimeBucket includes the time_bucket in the canonical context.
 // This is used for binding hash computation and reference mode OTP generation.
 func CanonicalContextWithTimeBucket(binding Binding, now time.Time) (string, error) {
-	baseContext, err := CanonicalBindingInput(binding)
-	if err != nil {
-		return "", err
-	}
-
-	window := TimeWindow(now)
-	timeBucket := fmt.Sprintf("%d", window)
-	return fmt.Sprintf("%s|%d:%s", baseContext, len(timeBucket), timeBucket), nil
+	return CanonicalBindingInput(binding, now)
 }
 
 func TimeWindow(now time.Time) int64 {
@@ -210,10 +221,10 @@ func CanonicalReferenceInput(context string, now time.Time) (string, error) {
 	if err := ValidateContext(context); err != nil {
 		return "", err
 	}
+	_ = now
 
-	window := TimeWindow(now)
-	timeBucket := fmt.Sprintf("%d", window)
-	return fmt.Sprintf("%s%d:%s|%d:%s", canonicalPrefix, len(context), context, len(timeBucket), timeBucket), nil
+	// Deterministic derivation consumes caller-provided canonical context bytes.
+	return context, nil
 }
 
 func GenerateReference(context string, now time.Time, config Config) (string, error) {
@@ -278,8 +289,8 @@ func IssueReference(binding Binding, now time.Time, reader io.Reader, config Con
 		return nil, err
 	}
 
-	// Generate OTP using canonical binding input (without time_bucket for determinism)
-	bindingContext, err := CanonicalBindingInput(binding)
+	// Generate OTP using canonical context with time_bucket.
+	bindingContext, err := CanonicalBindingInput(binding, now)
 	if err != nil {
 		return nil, err
 	}
@@ -313,7 +324,12 @@ func IssueRandom(binding Binding, now time.Time, reader io.Reader) (*Challenge, 
 		return nil, err
 	}
 
-	return newChallenge(ModeRandom, "", binding, id, otp, now), nil
+	bindingContext, err := CanonicalBindingInput(binding, now)
+	if err != nil {
+		return nil, err
+	}
+
+	return newChallenge(ModeRandom, bindingContext, binding, id, otp, now), nil
 }
 
 func (challenge *Challenge) Verify(otp string, binding Binding, now time.Time) error {
@@ -339,7 +355,7 @@ func (challenge *Challenge) Verify(otp string, binding Binding, now time.Time) e
 	}
 
 	// Verify binding hash first for replay protection
-	recomputedContext, err := CanonicalBindingInput(binding)
+	recomputedContext, err := CanonicalBindingInput(binding, challenge.IssuedAt)
 	if err != nil {
 		challenge.invalidate(now)
 		return err
@@ -348,7 +364,7 @@ func (challenge *Challenge) Verify(otp string, binding Binding, now time.Time) e
 	// Compute binding hash for verification
 	bindingHashInput := recomputedContext
 	recomputedHash := blake3_128([]byte(bindingHashInput))
-	
+
 	// Constant-time comparison of binding hashes
 	if !constantTimeEqual(recomputedHash[:], challenge.BindingHash) {
 		challenge.invalidate(now)
@@ -360,10 +376,10 @@ func (challenge *Challenge) Verify(otp string, binding Binding, now time.Time) e
 		challenge.invalidate(now)
 		return err
 	}
-	
+
 	// Compute OTP hash for constant-time comparison
 	otpHash := blake3_128([]byte(normalizedOTP))
-	
+
 	// Constant-time OTP comparison
 	if !constantTimeEqual(otpHash[:], challenge.OTPHash) {
 		challenge.invalidate(now)
@@ -445,27 +461,27 @@ func generateReferenceWithSecret(context, serverSecret string, now time.Time) (s
 		return "", err
 	}
 
-	// HARDENED: Use BLAKE3-128 with server secret + canonical context
+	// Deterministic mode derives OTP from BLAKE3-256(secret + canonical_context).
 	fullInput := serverSecret + canonical
-	digest := blake3_128([]byte(fullInput))
+	digest := blake3.Sum256([]byte(fullInput))
 	return otpFromDigest(digest[:])
 }
 
 func newChallenge(mode Mode, context string, binding Binding, id, otp string, now time.Time) *Challenge {
 	// Compute OTP hash (BLAKE3-128)
 	otpHash := blake3_128([]byte(otp))
-	
+
 	// Compute binding hash from context (BLAKE3-128)
 	// For reference mode, context is canonical binding input
 	bindingHashInput := context
 	if bindingHashInput == "" {
 		// For random mode, compute from binding
-		if ctx, err := CanonicalBindingInput(binding); err == nil {
+		if ctx, err := CanonicalBindingInput(binding, now); err == nil {
 			bindingHashInput = ctx
 		}
 	}
 	bindingHash := blake3_128([]byte(bindingHashInput))
-	
+
 	return &Challenge{
 		ID:               id,
 		Mode:             mode,
@@ -509,6 +525,20 @@ func validateBindingPart(name, value string) error {
 	}
 	if len(value) > MaxBindingLength {
 		return fmt.Errorf("%w: %s exceeds %d bytes", ErrBindingRequired, name, MaxBindingLength)
+	}
+
+	return nil
+}
+
+func validatePlatformType(value string) error {
+	if err := validateBindingPart("platform_type", value); err != nil {
+		return err
+	}
+	if value != strings.ToLower(value) {
+		return fmt.Errorf("%w: platform_type must be lowercase", ErrBindingRequired)
+	}
+	if _, ok := validPlatformTypes[value]; !ok {
+		return fmt.Errorf("%w: platform_type must be one of web|ios|android|desktop|api|embedded|other", ErrBindingRequired)
 	}
 
 	return nil

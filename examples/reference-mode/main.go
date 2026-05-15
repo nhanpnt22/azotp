@@ -14,10 +14,11 @@ func main() {
 	config := loadConfig()
 	now := time.Unix(1_747_180_800, 0).UTC()
 	binding := azotp.Binding{
-		Provider:  "zalo",
-		SessionID: "sess-x7d9",
-		DeviceID:  "device-abc123",
-		Nonce:     "nonce-p4t2",
+		Provider:     "zalo",
+		PlatformType: "web",
+		SessionID:    "sess-x7d9",
+		DeviceID:     "device-abc123",
+		Nonce:        "nonce-p4t2",
 	}
 
 	challenge, err := azotp.IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), config)
@@ -25,7 +26,7 @@ func main() {
 		panic(err)
 	}
 
-	context, err := azotp.CanonicalBindingInput(binding)
+	context, err := azotp.CanonicalBindingInput(binding, now)
 	if err != nil {
 		panic(err)
 	}

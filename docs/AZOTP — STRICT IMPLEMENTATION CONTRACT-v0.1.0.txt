@@ -1,6 +1,6 @@
 ============================================================
 AZOTP — STRICT IMPLEMENTATION CONTRACT
-v0.1.0 
+v0.1.0
 ============================================================
 
 STATUS
@@ -28,6 +28,7 @@ It guarantees:
 - cross-language determinism
 - replay safety
 - implementation correctness
+- platform isolation integrity
 
 ------------------------------------------------------------
 
@@ -69,10 +70,11 @@ FIELD ORDER (IMMUTABLE):
 
 1. version
 2. provider
-3. device_id
-4. session_id
-5. nonce
-6. time_bucket
+3. platform_type
+4. device_id
+5. session_id
+6. nonce
+7. time_bucket
 
 ------------------------------------------------------------
 
@@ -80,6 +82,7 @@ ENCODING FORMAT (STRICT):
 
 v:<len>:<value>|
 p:<len>:<provider>|
+pt:<len>:<platform_type>|
 d:<len>:<device_id>|
 s:<len>:<session_id>|
 n:<len>:<nonce>|
@@ -92,6 +95,15 @@ RULES:
 - <len> = UTF-8 byte length
 - delimiters MUST NOT change
 - order MUST NOT change
+- ALL fields REQUIRED
+
+------------------------------------------------------------
+
+PLATFORM_TYPE RULES:
+
+- MUST be lowercase
+- MUST be one of:
+  "web" | "ios" | "android" | "desktop" | "api" | "embedded" | "other"
 
 ------------------------------------------------------------
 
@@ -100,6 +112,7 @@ FAIL IF:
 - field order differs
 - length mismatch
 - encoding differs across services
+- platform_type missing or invalid
 
 ============================================================
 IV. HASH SIZE LOCK
@@ -114,7 +127,7 @@ REQUIREMENTS:
 
 FORBIDDEN:
 
-- 256-bit hashes
+- 256-bit hashes for storage
 - truncated or variable-length hashes
 
 ------------------------------------------------------------
@@ -129,7 +142,7 @@ V. RANDOM MODE BINDING
 
 RULE:
 
-Random Mode MUST enforce binding_hash identical to Reference Mode
+Random Mode MUST enforce binding identical to deterministic mode
 
 ------------------------------------------------------------
 
@@ -190,12 +203,12 @@ FORBIDDEN:
 REFERENCE:
 
 function constant_time_equal(a, b):
-  if len(a) != len(b):
-    return false
-  result = 0
-  for i in range(len(a)):
-    result |= a[i] XOR b[i]
-  return result == 0
+ if len(a) != len(b):
+   return false
+ result = 0
+ for i in range(len(a)):
+   result |= a[i] XOR b[i]
+ return result == 0
 
 ------------------------------------------------------------
 
@@ -293,7 +306,33 @@ FAIL IF:
 - derived from identity data
 
 ============================================================
-XII. SINGLE-USE ENFORCEMENT
+XII. PLATFORM CONSISTENCY
+============================================================
+
+REQUIREMENTS:
+
+- platform_type MUST match between:
+  - generation
+  - verification
+
+- MUST be included in canonical_context
+
+------------------------------------------------------------
+
+SECURITY EFFECT:
+
+- prevents cross-platform replay
+- enforces environment isolation
+
+------------------------------------------------------------
+
+FAIL IF:
+
+- platform mismatch
+- platform omitted
+
+============================================================
+XIII. SINGLE-USE ENFORCEMENT
 ============================================================
 
 RULE:
@@ -315,7 +354,7 @@ FAIL IF:
 - used flag not atomic
 
 ============================================================
-XIII. CROSS-SERVICE CONSISTENCY
+XIV. CROSS-SERVICE CONSISTENCY
 ============================================================
 
 REQUIREMENTS:
@@ -335,7 +374,7 @@ FAIL IF:
 - inconsistent implementations
 
 ============================================================
-XIV. FAIL-CLOSED MODEL
+XV. FAIL-CLOSED MODEL
 ============================================================
 
 RULE:
@@ -351,7 +390,7 @@ NO RECOVERY:
 - no fallback logic
 
 ============================================================
-XV. FINAL INVARIANT
+XVI. FINAL INVARIANT
 ============================================================
 
 SYSTEM MUST BE:
@@ -363,6 +402,7 @@ SYSTEM MUST BE:
 - single-use
 - time-bounded
 - concurrency-safe
+- platform-isolated
 
 ------------------------------------------------------------
 
@@ -372,6 +412,7 @@ IF ANY:
 - binding skipped
 - nonce reused
 - OTP reused
+- platform mismatch
 - constant-time violated
 - hash size differs
 

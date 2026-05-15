@@ -27,8 +27,8 @@ func TestValidateBindingRequiresProviderDeviceSessionNonce(t *testing.T) {
 	cases := []Binding{
 		{},
 		{Provider: "zalo"},
-		{Provider: "zalo", DeviceID: "dev-1"},
-		{Provider: "zalo", DeviceID: "dev-1", SessionID: "sess-1"},
+		{Provider: "zalo", PlatformType: "web", DeviceID: "dev-1"},
+		{Provider: "zalo", PlatformType: "web", DeviceID: "dev-1", SessionID: "sess-1"},
 	}
 
 	for _, binding := range cases {
@@ -40,7 +40,7 @@ func TestValidateBindingRequiresProviderDeviceSessionNonce(t *testing.T) {
 
 func TestIssueWrapperUsesDefaultConfig(t *testing.T) {
 	now := time.Unix(1_747_180_800, 0).UTC()
-	binding := Binding{Provider: "zalo", DeviceID: "device-abc123", SessionID: "sess-x7d9", Nonce: "nonce-p4t2"}
+	binding := Binding{Provider: "zalo", PlatformType: "web", DeviceID: "device-abc123", SessionID: "sess-x7d9", Nonce: "nonce-p4t2"}
 	challenge, err := Issue(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)))
 	if err != nil {
 		t.Fatalf("Issue: unexpected error: %v", err)
@@ -60,7 +60,7 @@ func TestIssueWrapperUsesDefaultConfig(t *testing.T) {
 
 func TestGenerateReferenceFallsBackToDefaultSecret(t *testing.T) {
 	now := time.Unix(1_747_180_800, 0).UTC()
-	context := "provider:zalo|device:web:abc123|session:x7d9|nonce:p4t2"
+	context := "v:1:1|p:4:zalo|pt:3:web|d:7:web:abc|s:4:x7d9|n:4:p4t2|t:8:29119680"
 	got, err := GenerateReference(context, now, Config{})
 	if err != nil {
 		t.Fatalf("GenerateReference: unexpected error: %v", err)
