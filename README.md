@@ -7,13 +7,12 @@ Human-centered one-time passwords for the AZOTP v0.1.0 reference architecture.
 ## Locked traits
 
 - Default mode: `reference`
-- OTP format: `4` base57 characters
-- Alphabet: `ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz123456789`
-- Alphabet exclusions: `I`, `O`, `l`, `0`
+- OTP format: `4` lowercase alphabet characters (`a-z`)
+- Alphabet: `abcdefghijklmnopqrstuvwxyz`
 - Visible expiry: `60s`
 - Backend grace window: `90s`
 - Attempts per OTP: `1`
-- Binding: provider + platform_type + device + session + nonce + time_bucket
+- Binding: provider + platform_type + device_id + session_id + nonce + time_bucket
 - Allowed `platform_type`: `web`, `ios`, `android`, `desktop`, `embedded`, `other`
 - Config secret: `Config{ServerSecret: ...}` with default `azotp`
 
@@ -90,18 +89,18 @@ See `examples/reference-mode` for a runnable program that injects `Config` direc
 
 This package implements the AZOTP v0.1.0 **HARDENED** specification with the following guarantees:
 
-- **Deterministic Derivation:** Reference mode uses BLAKE3-256(server_secret + canonical_context), projected to base57 alphabet
+- **Deterministic Derivation:** Reference mode uses BLAKE3-256(server_secret + canonical_context), projected to lowercase `a-z` alphabet
 - **Constant-Time Comparison:** OTP and binding verification use `crypto/subtle.ConstantTimeCompare` to prevent timing side-channels
 - **Single-Use Enforcement:** Each OTP validates exactly once; wrong OTP, wrong binding, or expiry invalidates immediately
 - **Replay Protection:** Binding hash (BLAKE3-128) + single-use in package; nonce uniqueness and session semantics must be enforced by the service storage/transaction layer
 - **Cryptographic Hash:** BLAKE3-128 for both OTP hashes and binding hashes (16 bytes exact)
-- **Case Sensitivity:** OTP input is case-sensitive; no normalization is performed
+- **Case Handling:** OTP input is case-insensitive and normalized to lowercase before validation
 
 ## Migration Note
 
-- v0.1.0 now uses base57 output instead of base26 lowercase.
-- Existing integrations must stop uppercasing/lowercasing OTP input.
-- Legacy base26-only OTP validators are incompatible and must be updated.
+- AZOTP uses 4-character lowercase `a-z` OTP values.
+- Input is case-insensitive and normalized to lowercase during verification.
+- Integrations should avoid non-letter characters in OTP fields.
 
 ## Requirements
 
@@ -179,10 +178,10 @@ Provides byte-exact test data for:
 
 ## Notes
 
-- Reference Mode is the default. It computes `blake3-256(server_secret + canonical_context)` and projects the digest into base57 output.
+- Reference Mode is the default. It computes `blake3-256(server_secret + canonical_context)` and projects the digest into lowercase `a-z` output.
 - `AZOTP_SERVER_SECRET` is supplied by the caller via `Config.ServerSecret` and defaults to `azotp` when empty.
 - Challenge IDs use the local `id57` package for 12-character human-readable identifiers.
 - Binding canonicalization is provider-aware and uses the same exact length-prefixed style used by the sibling deterministic packages.
 - Accepted `platform_type` values are `web`, `ios`, `android`, `desktop`, `embedded`, and `other`.
-- Verification is single-attempt: wrong OTP, wrong binding, or expiry invalidates the challenge immediately, and OTP input is case-sensitive.
+- Verification is single-attempt: wrong OTP, wrong binding, or expiry invalidates the challenge immediately, and OTP input is case-insensitive.
 - Random Mode remains available explicitly for fallback or interoperability flows.

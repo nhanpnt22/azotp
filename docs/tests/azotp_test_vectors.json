@@ -12,7 +12,7 @@
     "notes": [
       "All canonical_context values are byte-exact",
       "All hashes are lowercase hex",
-      "OTP is base57 and case-sensitive"
+      "OTP is a-z and case-insensitive"
     ]
   },
 
@@ -36,8 +36,8 @@
       "canonical_context": "v:1:1|p:4:zalo|pt:3:web|d:10:web:abc123|s:4:s7d9|n:4:p4t2|t:8:28564231",
 
       "expected": {
-        "otp": "6aWt",
-        "otp_hash_hex": "0b5488a9e55e06e6492aaf4cff4cd818",
+        "otp": "etpz",
+        "otp_hash_hex": "f902dfe27bc3008486e303337f75642f",
         "binding_hash_hex": "3cca3509dad628a6611cb7126a7ad330"
       }
     },
@@ -60,8 +60,8 @@
       "canonical_context": "v:1:1|p:4:zalo|pt:3:web|d:10:web:abc123|s:4:s7d9|n:4:xxxx|t:8:28564231",
 
       "expected": {
-        "otp": "mk83",
-        "otp_hash_hex": "5ce9f39effadb168d2a2aa0d79843db8",
+        "otp": "dobt",
+        "otp_hash_hex": "974e2bd58d1069dca1e758b79c85b468",
         "binding_hash_hex": "91262058d7920ba1aaedaa7f9a247a30"
       }
     },
@@ -84,8 +84,8 @@
       "canonical_context": "v:1:1|p:4:zalo|pt:3:ios|d:10:web:abc123|s:4:s7d9|n:4:p4t2|t:8:28564231",
 
       "expected": {
-        "otp": "jF3s",
-        "otp_hash_hex": "11c5b5498356c09b4ece7e139b955d03",
+        "otp": "fija",
+        "otp_hash_hex": "da55df78bd0b33c7b375c08198ed7345",
         "binding_hash_hex": "948c6293893de3bf0bf030aa1747076e"
       }
     },
@@ -108,8 +108,8 @@
       "canonical_context": "v:1:1|p:4:zalo|pt:3:web|d:10:web:abc123|s:4:s7d9|n:4:p4t2|t:8:28564232",
 
       "expected": {
-        "otp": "YnrZ",
-        "otp_hash_hex": "0a9570137a8bd692b0453e199486601c",
+        "otp": "hraq",
+        "otp_hash_hex": "9291647c3327776a75548b427c2c1e6e",
         "binding_hash_hex": "57f2476b8eaf8b5ff01fe80709e44d7b"
       }
     },
@@ -117,16 +117,16 @@
     {
       "id": "V005",
       "type": "verification",
-      "description": "case-sensitive input",
+      "description": "case-insensitive input",
 
       "input": {
-        "stored_otp": "6aWt",
-        "input_otp": "6AWT"
+        "stored_otp": "etpz",
+        "input_otp": "ETPZ"
       },
 
       "expected": {
-        "valid": false,
-        "error": "INVALID_OTP"
+        "valid": true,
+        "error": ""
       }
     },
 

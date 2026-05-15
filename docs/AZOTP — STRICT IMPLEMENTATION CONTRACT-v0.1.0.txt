@@ -123,22 +123,22 @@ REQUIREMENTS:
 - OTP length MUST be exactly 4 characters
 - OTP alphabet MUST be exactly:
 
-  ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz123456789
+  abcdefghijklmnopqrstuvwxyz
 
-- OTP handling MUST be case-sensitive
+- OTP handling MUST be case-insensitive (normalize to lowercase before validation)
 
 ------------------------------------------------------------
 
 FORBIDDEN:
 
-- case normalization (toLower / toUpper)
+- skipping lowercase normalization on input
 - accepting characters outside the locked alphabet
 
 ------------------------------------------------------------
 
 FAIL IF:
 
-- case normalization is used
+- lowercase normalization is not used
 - any non-alphabet character is accepted
 
 ============================================================

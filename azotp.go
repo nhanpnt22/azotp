@@ -4,7 +4,7 @@
 //
 // Locked protocol traits (IMMUTABLE):
 //
-//   - OTP format: 4 characters from base57 alphabet
+//   - OTP format: 4 characters from a-z alphabet
 //   - Deterministic derivation hash: BLAKE3-256
 //   - Stored hash size: BLAKE3-128 (16 bytes exact)
 //   - Binding hash: BLAKE3-128 of canonical context
@@ -33,7 +33,7 @@ import (
 const (
 	Version           = "v0.1.0"
 	ProtocolVersion   = "1"
-	Alphabet          = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz123456789"
+	Alphabet          = "abcdefghijklmnopqrstuvwxyz"
 	OTPLength         = 4
 	ChallengeIDLength = 12
 	VisibleExpiry     = 60 * time.Second
@@ -52,7 +52,6 @@ var validPlatformTypes = map[string]struct{}{
 	"ios":      {},
 	"android":  {},
 	"desktop":  {},
-	"api":      {},
 	"embedded": {},
 	"other":    {},
 }
@@ -513,9 +512,9 @@ func readAlphabetByte(reader io.Reader) (byte, error) {
 		if _, err := io.ReadFull(reader, sample[:]); err != nil {
 			return 0, fmt.Errorf("%w: %v", ErrEntropyDepleted, err)
 		}
-		// Rejection sampling keeps distribution uniform for base57.
-		// Largest multiple of 57 below 256 is 228.
-		if sample[0] >= 228 {
+		// Rejection sampling keeps distribution uniform for base26.
+		// Largest multiple of 26 below 256 is 234.
+		if sample[0] >= 234 {
 			continue
 		}
 		return Alphabet[int(sample[0])%len(Alphabet)], nil
@@ -541,7 +540,7 @@ func validatePlatformType(value string) error {
 		return fmt.Errorf("%w: platform_type must be lowercase", ErrBindingRequired)
 	}
 	if _, ok := validPlatformTypes[value]; !ok {
-		return fmt.Errorf("%w: platform_type must be one of web|ios|android|desktop|api|embedded|other", ErrBindingRequired)
+		return fmt.Errorf("%w: platform_type must be one of web|ios|android|desktop|embedded|other", ErrBindingRequired)
 	}
 
 	return nil
@@ -552,9 +551,10 @@ func normalizeOTP(value string) (string, error) {
 		return "", fmt.Errorf("%w: length must be %d", ErrInvalidOTP, OTPLength)
 	}
 
+	normalized := strings.ToLower(value)
 	buffer := make([]byte, OTPLength)
-	for index := 0; index < len(value); index++ {
-		ch := value[index]
+	for index := 0; index < len(normalized); index++ {
+		ch := normalized[index]
 		if !alphabetSet[ch] {
 			return "", fmt.Errorf("%w: character %q at index %d", ErrInvalidOTP, value[index], index)
 		}

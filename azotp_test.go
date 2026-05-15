@@ -54,8 +54,8 @@ func TestGenerateRandomKnownValue(t *testing.T) {
 		t.Fatalf("GenerateRandom: unexpected error: %v", err)
 	}
 
-	if otp != "ABCD" {
-		t.Fatalf("GenerateRandom = %q, want %q", otp, "ABCD")
+	if otp != "abcd" {
+		t.Fatalf("GenerateRandom = %q, want %q", otp, "abcd")
 	}
 }
 
@@ -67,14 +67,14 @@ func TestGenerateRandomRejectsInvalidEntropy(t *testing.T) {
 }
 
 func TestValidate(t *testing.T) {
-	if err := Validate("KQm7"); err != nil {
+	if err := Validate("KQmX"); err != nil {
 		t.Fatalf("Validate(valid): unexpected error: %v", err)
 	}
-	if err := Validate("z9Za"); err != nil {
-		t.Fatalf("Validate(base57 valid): unexpected error: %v", err)
+	if err := Validate("zYZa"); err != nil {
+		t.Fatalf("Validate(case-insensitive valid): unexpected error: %v", err)
 	}
 
-	for _, value := range []string{"abc", "abcde", "ab0d", "abOd", "abId", "abld"} {
+	for _, value := range []string{"abc", "abcde", "ab0d", "ab1d", "ab-d", "ab_d"} {
 		if err := Validate(value); !errors.Is(err, ErrInvalidOTP) {
 			t.Fatalf("Validate(%q) = %v, want ErrInvalidOTP", value, err)
 		}
@@ -177,7 +177,7 @@ func TestVerifyBindingMismatchInvalidates(t *testing.T) {
 		t.Fatalf("Issue: unexpected error: %v", err)
 	}
 
-	wrongBinding := Binding{Provider: "zalo", PlatformType: "api", SessionID: "sess-2", DeviceID: "dev-1", Nonce: "nonce-1"}
+	wrongBinding := Binding{Provider: "zalo", PlatformType: "ios", SessionID: "sess-2", DeviceID: "dev-1", Nonce: "nonce-1"}
 	wantOTP, err := GenerateReference(challenge.Context, now, DefaultConfig())
 	if err != nil {
 		t.Fatalf("Generate(challenge.Context): unexpected error: %v", err)
@@ -227,8 +227,8 @@ func TestIssueRandomUsesRandomMode(t *testing.T) {
 	if challenge.Mode != ModeRandom {
 		t.Fatalf("challenge.Mode = %q, want %q", challenge.Mode, ModeRandom)
 	}
-	if issuedOTP != "AAAA" {
-		t.Fatalf("issued OTP = %q, want %q", issuedOTP, "AAAA")
+	if issuedOTP != "aaaa" {
+		t.Fatalf("issued OTP = %q, want %q", issuedOTP, "aaaa")
 	}
 	if challenge.Context == "" {
 		t.Fatalf("challenge.Context must be populated with canonical binding context")
@@ -280,8 +280,8 @@ func TestMustGenerateRandomSucceeds(t *testing.T) {
 	if err := Validate(otp); err != nil {
 		t.Fatalf("MustGenerateRandom returned invalid OTP: %v", err)
 	}
-	if otp != "AAAA" {
-		t.Fatalf("MustGenerateRandom with zero bytes = %q, want %q", otp, "AAAA")
+	if otp != "aaaa" {
+		t.Fatalf("MustGenerateRandom with zero bytes = %q, want %q", otp, "aaaa")
 	}
 }
 
@@ -460,7 +460,7 @@ func TestValidateBindingWithInvalidPlatformType(t *testing.T) {
 }
 
 func TestValidAllPlatformTypes(t *testing.T) {
-	validPlatforms := []string{"web", "ios", "android", "desktop", "api", "embedded", "other"}
+	validPlatforms := []string{"web", "ios", "android", "desktop", "embedded", "other"}
 
 	for _, platform := range validPlatforms {
 		binding := Binding{
@@ -531,10 +531,11 @@ func TestIsValidHelper(t *testing.T) {
 	}{
 		{"kqmx", true},
 		{"KQMX", true},
-		{"ab1d", true},
+		{"abzd", true},
 		{"abc", false},
 		{"abcde", false},
 		{"ab0d", false},
+		{"ab1d", false},
 	}
 
 	for _, tc := range cases {

@@ -64,13 +64,12 @@ A. REFERENCE MODE
 B. RANDOM MODE
 
 - OTP length == 4
-- characters ∈ base57 alphabet
-- OTP validation is case-sensitive
+- characters ∈ lowercase a-z alphabet
+- OTP validation is case-insensitive
 
-BASE57 ALPHABET:
+LOWERCASE ALPHABET:
 
-ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz123456789
-- excluded characters: I, O, l, 0
+abcdefghijklmnopqrstuvwxyz
 - entropy source MUST be CSPRNG
 
 ------------------------------------------------------------
@@ -123,7 +122,7 @@ SUCCESS CASE:
 FAILURE CASES:
 
 - wrong OTP → FAIL + used = true
-- case-only mismatch (e.g., `abCD` vs `ABcd`) → FAIL + used = true
+- case-only differences (e.g., `abCD` vs `ABcd`) → SUCCESS (after lowercase normalization)
 - expired OTP → FAIL
 - reused OTP → FAIL
 - binding mismatch → FAIL
@@ -181,7 +180,7 @@ IX. NONCE TESTS
 
 ASSERT:
 
-nonce reuse ALWAYS rejected (service storage/transaction layer)
+nonce reuse ALWAYS rejected (caller/service storage or transaction layer)
 
 ============================================================
 X. DEVICE + PLATFORM TESTS
@@ -226,7 +225,7 @@ XII. RATE LIMIT TESTS
 
 ASSERT:
 
-rate limiting enforced per:
+rate limiting enforced by the caller/service layer per:
 
 - identity_key
 - device_id

@@ -168,7 +168,7 @@ func TestValidateBindingPlatformTypeRules(t *testing.T) {
 		t.Fatalf("ValidateBinding(base): %v", err)
 	}
 
-	invalid := []string{"", "WEB", "tvos", " web", "web "}
+	invalid := []string{"", "WEB", "tvos", "api", " web", "web "}
 	for _, pt := range invalid {
 		binding := base
 		binding.PlatformType = pt

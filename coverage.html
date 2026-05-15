@@ -123,7 +123,6 @@ var validPlatformTypes = map[string]struct{}{
         "ios":      {},
         "android":  {},
         "desktop":  {},
-        "api":      {},
         "embedded": {},
         "other":    {},
 }
@@ -609,7 +608,7 @@ func validatePlatformType(value string) error <span class="cov8" title="1">{
                 return fmt.Errorf("%w: platform_type must be lowercase", ErrBindingRequired)
         }</span>
         <span class="cov8" title="1">if _, ok := validPlatformTypes[value]; !ok </span><span class="cov8" title="1">{
-                return fmt.Errorf("%w: platform_type must be one of web|ios|android|desktop|api|embedded|other", ErrBindingRequired)
+                                return fmt.Errorf("%w: platform_type must be one of web|ios|android|desktop|embedded|other", ErrBindingRequired)
         }</span>
 
         <span class="cov8" title="1">return nil</span>
