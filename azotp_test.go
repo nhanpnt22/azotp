@@ -102,7 +102,8 @@ func TestCanonicalReferenceInputUsesTimeWindow(t *testing.T) {
 		t.Fatalf("CanonicalReferenceInput: unexpected error: %v", err)
 	}
 
-	want := "v1|55:provider:zalo|device:web:abc123|session:x7d9|nonce:p4t2|29119680"
+	// Hardened spec: v1|<len>:<context>|<len>:<time_bucket>
+	want := "v1|55:provider:zalo|device:web:abc123|session:x7d9|nonce:p4t2|8:29119680"
 	if got != want {
 		t.Fatalf("CanonicalReferenceInput = %q, want %q", got, want)
 	}

@@ -1,0 +1,394 @@
+============================================================
+AZOTP — STRICT IMPLEMENTATION CONTRACT
+v0.1.0 
+============================================================
+
+STATUS
+------------------------------------------------------------
+FINAL • HARD-LOCKED • NON-NEGOTIABLE • PRODUCTION-ENFORCED
+
+TYPE
+------------------------------------------------------------
+Implementation Contract (Mandatory Compliance Layer)
+
+VERSION
+------------------------------------------------------------
+v0.1.0
+
+============================================================
+I. PURPOSE
+============================================================
+
+This contract defines the REQUIRED implementation constraints
+for AZOTP v0.1.0 HARDENED.
+
+It guarantees:
+
+- zero ambiguity
+- cross-language determinism
+- replay safety
+- implementation correctness
+
+------------------------------------------------------------
+
+RULE:
+
+ALL implementations MUST comply.
+
+ANY violation → SYSTEM INVALID
+
+============================================================
+II. BYTE-LEVEL CANONICALIZATION
+============================================================
+
+REQUIREMENTS:
+
+- canonical_context MUST be UTF-8 encoded bytes
+- encoding MUST be identical across all systems
+- no implicit conversions allowed
+
+------------------------------------------------------------
+
+FORBIDDEN:
+
+- UTF-16 or platform encodings
+- trimming, normalization, mutation
+- hidden transformations
+
+------------------------------------------------------------
+
+INVARIANT:
+
+Same logical input → identical byte sequence
+
+============================================================
+III. CANONICAL FORMAT LOCK
+============================================================
+
+FIELD ORDER (IMMUTABLE):
+
+1. version
+2. provider
+3. device_id
+4. session_id
+5. nonce
+6. time_bucket
+
+------------------------------------------------------------
+
+ENCODING FORMAT (STRICT):
+
+v:<len>:<value>|
+p:<len>:<provider>|
+d:<len>:<device_id>|
+s:<len>:<session_id>|
+n:<len>:<nonce>|
+t:<len>:<time_bucket>
+
+------------------------------------------------------------
+
+RULES:
+
+- <len> = UTF-8 byte length
+- delimiters MUST NOT change
+- order MUST NOT change
+
+------------------------------------------------------------
+
+FAIL IF:
+
+- field order differs
+- length mismatch
+- encoding differs across services
+
+============================================================
+IV. HASH SIZE LOCK
+============================================================
+
+REQUIREMENTS:
+
+- otp_hash MUST be BLAKE3-128 (16 bytes EXACT)
+- binding_hash MUST be BLAKE3-128 (16 bytes EXACT)
+
+------------------------------------------------------------
+
+FORBIDDEN:
+
+- 256-bit hashes
+- truncated or variable-length hashes
+
+------------------------------------------------------------
+
+INVARIANT:
+
+Hash size MUST be identical across all systems
+
+============================================================
+V. RANDOM MODE BINDING
+============================================================
+
+RULE:
+
+Random Mode MUST enforce binding_hash identical to Reference Mode
+
+------------------------------------------------------------
+
+FLOW:
+
+1. generate OTP via CSPRNG
+2. build canonical_context
+3. compute binding_hash
+4. store binding_hash
+5. verify binding_hash on validation
+
+------------------------------------------------------------
+
+FAIL IF:
+
+- OTP exists without binding
+- binding not verified
+
+============================================================
+VI. TIME SOURCE REQUIREMENT
+============================================================
+
+REQUIREMENTS:
+
+- clocks MUST be NTP synchronized
+- drift MUST be ≤ ±30 seconds
+
+------------------------------------------------------------
+
+TIME MODEL:
+
+time_bucket = floor(unix_time / 60)
+
+------------------------------------------------------------
+
+FAIL IF:
+
+- inconsistent time_bucket across services
+- unsynchronized clocks
+
+============================================================
+VII. CONSTANT-TIME COMPARISON
+============================================================
+
+RULE:
+
+ALL OTP comparisons MUST use constant-time algorithm
+
+------------------------------------------------------------
+
+FORBIDDEN:
+
+- == operator
+- early-return comparisons
+
+------------------------------------------------------------
+
+REFERENCE:
+
+function constant_time_equal(a, b):
+  if len(a) != len(b):
+    return false
+  result = 0
+  for i in range(len(a)):
+    result |= a[i] XOR b[i]
+  return result == 0
+
+------------------------------------------------------------
+
+FAIL IF:
+
+- timing side-channel exists
+
+============================================================
+VIII. STORAGE INTEGRITY
+============================================================
+
+REQUIREMENTS:
+
+- otp_hash MUST be stored as 16 raw bytes
+- binding_hash MUST be stored as 16 raw bytes
+- used flag MUST be atomic
+
+------------------------------------------------------------
+
+ALLOWED (IF NOT RAW):
+
+- hex encoding (fixed length)
+- base64 encoding (fixed format)
+
+------------------------------------------------------------
+
+FORBIDDEN:
+
+- partial writes
+- inconsistent encoding
+- mixed formats
+
+============================================================
+IX. TRANSACTIONAL GUARANTEE
+============================================================
+
+REQUIREMENTS:
+
+- verification MUST run inside transaction
+- MUST lock challenge (SELECT FOR UPDATE)
+- mutation MUST be atomic
+
+------------------------------------------------------------
+
+FAIL IF:
+
+- multiple successful verifications occur
+- race conditions exist
+
+============================================================
+X. NONCE GUARANTEE
+============================================================
+
+REQUIREMENTS:
+
+- nonce MUST be cryptographically random
+- nonce MUST be unique per challenge
+- nonce MUST be single-use
+
+------------------------------------------------------------
+
+FAIL IF:
+
+- nonce reused
+- nonce predictable
+
+------------------------------------------------------------
+
+RULE:
+
+nonce reuse → IMMEDIATE REJECTION
+
+============================================================
+XI. DEVICE ID STABILITY
+============================================================
+
+REQUIREMENTS:
+
+- device_id MUST be stable across sessions
+- MUST NOT contain PII
+- MUST NOT change during challenge
+
+------------------------------------------------------------
+
+WEB:
+
+- client-generated UUID
+- MUST persist (local storage)
+
+------------------------------------------------------------
+
+FAIL IF:
+
+- regenerated per request
+- derived from identity data
+
+============================================================
+XII. SINGLE-USE ENFORCEMENT
+============================================================
+
+RULE:
+
+OTP MUST be usable exactly once
+
+------------------------------------------------------------
+
+REQUIREMENTS:
+
+- ANY attempt → used = true
+- reuse MUST be rejected
+
+------------------------------------------------------------
+
+FAIL IF:
+
+- OTP reusable
+- used flag not atomic
+
+============================================================
+XIII. CROSS-SERVICE CONSISTENCY
+============================================================
+
+REQUIREMENTS:
+
+ALL services MUST:
+
+- use identical canonicalization
+- use identical hash functions
+- use identical time_bucket logic
+- use identical encoding rules
+
+------------------------------------------------------------
+
+FAIL IF:
+
+- language-specific divergence
+- inconsistent implementations
+
+============================================================
+XIV. FAIL-CLOSED MODEL
+============================================================
+
+RULE:
+
+ANY violation → immediate failure
+
+------------------------------------------------------------
+
+NO RECOVERY:
+
+- no partial success
+- no retry within same challenge
+- no fallback logic
+
+============================================================
+XV. FINAL INVARIANT
+============================================================
+
+SYSTEM MUST BE:
+
+- deterministic
+- byte-consistent
+- binding-enforced
+- replay-safe
+- single-use
+- time-bounded
+- concurrency-safe
+
+------------------------------------------------------------
+
+IF ANY:
+
+- canonicalization differs
+- binding skipped
+- nonce reused
+- OTP reused
+- constant-time violated
+- hash size differs
+
+→ SYSTEM INVALID
+
+============================================================
+FINAL STATEMENT
+============================================================
+
+This contract is REQUIRED for:
+
+- production systems
+- distributed architectures
+- multi-language implementations
+
+Violation of ANY rule voids AZOTP security guarantees.
+
+============================================================
+END OF CONTRACT
+============================================================
