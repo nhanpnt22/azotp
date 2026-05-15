@@ -2,6 +2,7 @@ package azotp
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"testing"
@@ -16,7 +17,12 @@ type vector struct {
 	ID               string `json:"id"`
 	Type             string `json:"type"`
 	CanonicalContext string `json:"canonical_context"`
-	Input            struct {
+	Expected         struct {
+		OTP            string `json:"otp"`
+		OTPHashHex     string `json:"otp_hash_hex"`
+		BindingHashHex string `json:"binding_hash_hex"`
+	} `json:"expected"`
+	Input struct {
 		ServerSecret string `json:"server_secret"`
 		Provider     string `json:"provider"`
 		PlatformType string `json:"platform_type"`
@@ -87,6 +93,20 @@ func TestVectorsCanonicalizationAndDeterminism(t *testing.T) {
 		if err := Validate(left); err != nil {
 			t.Fatalf("%s: generated otp invalid: %v", item.ID, err)
 		}
+		if item.Expected.OTP == "" || item.Expected.OTPHashHex == "" || item.Expected.BindingHashHex == "" {
+			t.Fatalf("%s: reference vector expected fields must be populated", item.ID)
+		}
+		if left != item.Expected.OTP {
+			t.Fatalf("%s: otp mismatch: got %q want %q", item.ID, left, item.Expected.OTP)
+		}
+		otpHash := blake3_128([]byte(left))
+		if gotHash := hex.EncodeToString(otpHash[:]); gotHash != item.Expected.OTPHashHex {
+			t.Fatalf("%s: otp_hash mismatch: got %q want %q", item.ID, gotHash, item.Expected.OTPHashHex)
+		}
+		bindingHash := blake3_128([]byte(context))
+		if gotHash := hex.EncodeToString(bindingHash[:]); gotHash != item.Expected.BindingHashHex {
+			t.Fatalf("%s: binding_hash mismatch: got %q want %q", item.ID, gotHash, item.Expected.BindingHashHex)
+		}
 
 		computed[item.ID] = left
 	}
@@ -112,7 +132,7 @@ func TestIssueStoresFixedHashSizes(t *testing.T) {
 		Nonce:        "nonce-1",
 	}
 
-	ref, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
+	ref, _, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
 	if err != nil {
 		t.Fatalf("IssueReference: %v", err)
 	}
@@ -123,7 +143,7 @@ func TestIssueStoresFixedHashSizes(t *testing.T) {
 		t.Fatalf("IssueReference BindingHash len=%d want=%d", len(ref.BindingHash), BindingHashSize)
 	}
 
-	rand, err := IssueRandom(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)))
+	rand, _, err := IssueRandom(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)))
 	if err != nil {
 		t.Fatalf("IssueRandom: %v", err)
 	}

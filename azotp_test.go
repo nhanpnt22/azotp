@@ -54,8 +54,8 @@ func TestGenerateRandomKnownValue(t *testing.T) {
 		t.Fatalf("GenerateRandom: unexpected error: %v", err)
 	}
 
-	if otp != "abcd" {
-		t.Fatalf("GenerateRandom = %q, want %q", otp, "abcd")
+	if otp != "ABCD" {
+		t.Fatalf("GenerateRandom = %q, want %q", otp, "ABCD")
 	}
 }
 
@@ -67,14 +67,14 @@ func TestGenerateRandomRejectsInvalidEntropy(t *testing.T) {
 }
 
 func TestValidate(t *testing.T) {
-	if err := Validate("kqmx"); err != nil {
+	if err := Validate("KQm7"); err != nil {
 		t.Fatalf("Validate(valid): unexpected error: %v", err)
 	}
-	if err := Validate("KQMX"); err != nil {
-		t.Fatalf("Validate(uppercase valid): unexpected error: %v", err)
+	if err := Validate("z9Za"); err != nil {
+		t.Fatalf("Validate(base57 valid): unexpected error: %v", err)
 	}
 
-	for _, value := range []string{"abc", "abcde", "ab1d", "AB1D"} {
+	for _, value := range []string{"abc", "abcde", "ab0d", "abOd", "abId", "abld"} {
 		if err := Validate(value); !errors.Is(err, ErrInvalidOTP) {
 			t.Fatalf("Validate(%q) = %v, want ErrInvalidOTP", value, err)
 		}
@@ -113,7 +113,7 @@ func TestCanonicalReferenceInputUsesTimeWindow(t *testing.T) {
 func TestIssueAndVerifySuccess(t *testing.T) {
 	now := time.Unix(1_747_180_800, 0).UTC()
 	binding := Binding{Provider: "zalo", PlatformType: "web", SessionID: "sess-1", DeviceID: "dev-1", Nonce: "nonce-1"}
-	challenge, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
+	challenge, issuedOTP, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
 	if err != nil {
 		t.Fatalf("Issue: unexpected error: %v", err)
 	}
@@ -131,15 +131,15 @@ func TestIssueAndVerifySuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate(challenge.Context): unexpected error: %v", err)
 	}
-	if challenge.OTP != wantOTP {
-		t.Fatalf("challenge.OTP = %q, want %q", challenge.OTP, wantOTP)
+	if issuedOTP != wantOTP {
+		t.Fatalf("issued OTP = %q, want %q", issuedOTP, wantOTP)
 	}
 	if challenge.State() != StatePending {
 		t.Fatalf("challenge.State() = %q, want %q", challenge.State(), StatePending)
 	}
 
 	verifyAt := now.Add(75 * time.Second)
-	if err := challenge.Verify(strings.ToUpper(wantOTP), binding, verifyAt); err != nil {
+	if err := challenge.Verify(wantOTP, binding, verifyAt); err != nil {
 		t.Fatalf("Verify(success): unexpected error: %v", err)
 	}
 	if challenge.State() != StateVerified {
@@ -153,7 +153,7 @@ func TestIssueAndVerifySuccess(t *testing.T) {
 func TestVerifyWrongOTPInvalidatesImmediately(t *testing.T) {
 	now := time.Unix(1_747_180_800, 0).UTC()
 	binding := Binding{Provider: "zalo", PlatformType: "web", SessionID: "sess-1", DeviceID: "dev-1", Nonce: "nonce-1"}
-	challenge, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
+	challenge, _, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
 	if err != nil {
 		t.Fatalf("Issue: unexpected error: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestVerifyWrongOTPInvalidatesImmediately(t *testing.T) {
 func TestVerifyBindingMismatchInvalidates(t *testing.T) {
 	now := time.Unix(1_747_180_800, 0).UTC()
 	binding := Binding{Provider: "zalo", PlatformType: "web", SessionID: "sess-1", DeviceID: "dev-1", Nonce: "nonce-1"}
-	challenge, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
+	challenge, _, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
 	if err != nil {
 		t.Fatalf("Issue: unexpected error: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestVerifyBindingMismatchInvalidates(t *testing.T) {
 func TestVerifyGraceExpiryInvalidates(t *testing.T) {
 	now := time.Unix(1_747_180_800, 0).UTC()
 	binding := Binding{Provider: "zalo", PlatformType: "web", SessionID: "sess-1", DeviceID: "dev-1", Nonce: "nonce-1"}
-	challenge, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
+	challenge, _, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
 	if err != nil {
 		t.Fatalf("Issue: unexpected error: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestVerifyGraceExpiryInvalidates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate(challenge.Context): unexpected error: %v", err)
 	}
-	if err := challenge.Verify(strings.ToUpper(wantOTP), binding, now.Add(90*time.Second)); !errors.Is(err, ErrOTPExpired) {
+	if err := challenge.Verify(wantOTP, binding, now.Add(90*time.Second)); !errors.Is(err, ErrOTPExpired) {
 		t.Fatalf("Verify(expired) = %v, want ErrOTPExpired", err)
 	}
 	if challenge.State() != StateInvalidated {
@@ -219,7 +219,7 @@ func TestVerifyGraceExpiryInvalidates(t *testing.T) {
 func TestIssueRandomUsesRandomMode(t *testing.T) {
 	now := time.Unix(1_747_180_800, 0).UTC()
 	binding := Binding{Provider: "zalo", PlatformType: "web", SessionID: "sess-1", DeviceID: "dev-1", Nonce: "nonce-1"}
-	challenge, err := IssueRandom(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)))
+	challenge, issuedOTP, err := IssueRandom(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)))
 	if err != nil {
 		t.Fatalf("IssueRandom: unexpected error: %v", err)
 	}
@@ -227,8 +227,8 @@ func TestIssueRandomUsesRandomMode(t *testing.T) {
 	if challenge.Mode != ModeRandom {
 		t.Fatalf("challenge.Mode = %q, want %q", challenge.Mode, ModeRandom)
 	}
-	if challenge.OTP != "aaaa" {
-		t.Fatalf("challenge.OTP = %q, want %q", challenge.OTP, "aaaa")
+	if issuedOTP != "AAAA" {
+		t.Fatalf("issued OTP = %q, want %q", issuedOTP, "AAAA")
 	}
 	if challenge.Context == "" {
 		t.Fatalf("challenge.Context must be populated with canonical binding context")
@@ -280,15 +280,15 @@ func TestMustGenerateRandomSucceeds(t *testing.T) {
 	if err := Validate(otp); err != nil {
 		t.Fatalf("MustGenerateRandom returned invalid OTP: %v", err)
 	}
-	if otp != "aaaa" {
-		t.Fatalf("MustGenerateRandom with zero bytes = %q, want %q", otp, "aaaa")
+	if otp != "AAAA" {
+		t.Fatalf("MustGenerateRandom with zero bytes = %q, want %q", otp, "AAAA")
 	}
 }
 
 func TestVerifyWithinVisibleWindow(t *testing.T) {
 	now := time.Unix(1_747_180_800, 0).UTC()
 	binding := Binding{Provider: "zalo", PlatformType: "web", SessionID: "sess-1", DeviceID: "dev-1", Nonce: "nonce-1"}
-	challenge, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
+	challenge, _, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
 	if err != nil {
 		t.Fatalf("IssueReference: %v", err)
 	}
@@ -311,7 +311,7 @@ func TestVerifyWithinVisibleWindow(t *testing.T) {
 func TestVerifyAtVisibleExpiryBoundary(t *testing.T) {
 	now := time.Unix(1_747_180_800, 0).UTC()
 	binding := Binding{Provider: "zalo", PlatformType: "web", SessionID: "sess-1", DeviceID: "dev-1", Nonce: "nonce-1"}
-	challenge, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
+	challenge, _, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
 	if err != nil {
 		t.Fatalf("IssueReference: %v", err)
 	}
@@ -324,7 +324,7 @@ func TestVerifyAtVisibleExpiryBoundary(t *testing.T) {
 func TestVerifyInGraceWindowAfterVisibleExpiry(t *testing.T) {
 	now := time.Unix(1_747_180_800, 0).UTC()
 	binding := Binding{Provider: "zalo", PlatformType: "web", SessionID: "sess-1", DeviceID: "dev-1", Nonce: "nonce-1"}
-	challenge, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
+	challenge, _, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
 	if err != nil {
 		t.Fatalf("IssueReference: %v", err)
 	}
@@ -347,7 +347,7 @@ func TestVerifyInGraceWindowAfterVisibleExpiry(t *testing.T) {
 func TestBindingHashImmutable(t *testing.T) {
 	now := time.Unix(1_747_180_800, 0).UTC()
 	binding := Binding{Provider: "zalo", PlatformType: "web", SessionID: "sess-1", DeviceID: "dev-1", Nonce: "nonce-1"}
-	challenge, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
+	challenge, _, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
 	if err != nil {
 		t.Fatalf("IssueReference: %v", err)
 	}
@@ -369,7 +369,7 @@ func TestBindingHashImmutable(t *testing.T) {
 func TestOTPHashImmutable(t *testing.T) {
 	now := time.Unix(1_747_180_800, 0).UTC()
 	binding := Binding{Provider: "zalo", PlatformType: "web", SessionID: "sess-1", DeviceID: "dev-1", Nonce: "nonce-1"}
-	challenge, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
+	challenge, _, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
 	if err != nil {
 		t.Fatalf("IssueReference: %v", err)
 	}
@@ -494,7 +494,7 @@ func TestIssueWithValidBinding(t *testing.T) {
 		Nonce:        "nonce-1",
 	}
 
-	challenge, err := Issue(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)))
+	challenge, _, err := Issue(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)))
 	if err != nil {
 		t.Fatalf("Issue: %v", err)
 	}
@@ -510,7 +510,7 @@ func TestIssueWithValidBinding(t *testing.T) {
 func TestVerifyInvalidOTPFormat(t *testing.T) {
 	now := time.Unix(1_747_180_800, 0).UTC()
 	binding := Binding{Provider: "zalo", PlatformType: "web", SessionID: "sess-1", DeviceID: "dev-1", Nonce: "nonce-1"}
-	challenge, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
+	challenge, _, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
 	if err != nil {
 		t.Fatalf("IssueReference: %v", err)
 	}
@@ -531,9 +531,10 @@ func TestIsValidHelper(t *testing.T) {
 	}{
 		{"kqmx", true},
 		{"KQMX", true},
+		{"ab1d", true},
 		{"abc", false},
 		{"abcde", false},
-		{"ab1d", false},
+		{"ab0d", false},
 	}
 
 	for _, tc := range cases {
@@ -565,7 +566,7 @@ func TestCanonicalContextWithTimeBucket(t *testing.T) {
 func TestVerifyAfterStateTransitions(t *testing.T) {
 	now := time.Unix(1_747_180_800, 0).UTC()
 	binding := Binding{Provider: "zalo", PlatformType: "web", SessionID: "sess-1", DeviceID: "dev-1", Nonce: "nonce-1"}
-	challenge, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
+	challenge, _, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
 	if err != nil {
 		t.Fatalf("IssueReference: %v", err)
 	}
@@ -586,7 +587,7 @@ func TestVerifyAfterStateTransitions(t *testing.T) {
 func TestVerifyWithInvalidBindingField(t *testing.T) {
 	now := time.Unix(1_747_180_800, 0).UTC()
 	binding := Binding{Provider: "zalo", PlatformType: "web", SessionID: "sess-1", DeviceID: "dev-1", Nonce: "nonce-1"}
-	challenge, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
+	challenge, _, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
 	if err != nil {
 		t.Fatalf("IssueReference: %v", err)
 	}
@@ -607,7 +608,7 @@ func TestIssueReferenceWithInvalidBinding(t *testing.T) {
 	now := time.Unix(1_747_180_800, 0).UTC()
 	binding := Binding{Provider: "", PlatformType: "web", SessionID: "sess-1", DeviceID: "dev-1", Nonce: "nonce-1"}
 
-	_, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
+	_, _, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
 	if !errors.Is(err, ErrBindingRequired) {
 		t.Fatalf("IssueReference(invalid binding) = %v, want ErrBindingRequired", err)
 	}
@@ -617,7 +618,7 @@ func TestIssueRandomWithInvalidBinding(t *testing.T) {
 	now := time.Unix(1_747_180_800, 0).UTC()
 	binding := Binding{Provider: "zalo", PlatformType: "INVALID", SessionID: "sess-1", DeviceID: "dev-1", Nonce: "nonce-1"}
 
-	_, err := IssueRandom(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)))
+	_, _, err := IssueRandom(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)))
 	if !errors.Is(err, ErrBindingRequired) {
 		t.Fatalf("IssueRandom(invalid binding) = %v, want ErrBindingRequired", err)
 	}
@@ -627,7 +628,7 @@ func TestIssueWithNilReaderReturnsError(t *testing.T) {
 	now := time.Unix(1_747_180_800, 0).UTC()
 	binding := Binding{Provider: "zalo", PlatformType: "web", SessionID: "sess-1", DeviceID: "dev-1", Nonce: "nonce-1"}
 
-	_, err := Issue(binding, now, nil)
+	_, _, err := Issue(binding, now, nil)
 	if !errors.Is(err, ErrEntropyDepleted) {
 		t.Fatalf("Issue(nil reader) = %v, want ErrEntropyDepleted", err)
 	}
@@ -637,7 +638,7 @@ func TestIssueReferenceWithNilReaderReturnsError(t *testing.T) {
 	now := time.Unix(1_747_180_800, 0).UTC()
 	binding := Binding{Provider: "zalo", PlatformType: "web", SessionID: "sess-1", DeviceID: "dev-1", Nonce: "nonce-1"}
 
-	_, err := IssueReference(binding, now, nil, DefaultConfig())
+	_, _, err := IssueReference(binding, now, nil, DefaultConfig())
 	if !errors.Is(err, ErrEntropyDepleted) {
 		t.Fatalf("IssueReference(nil reader) = %v, want ErrEntropyDepleted", err)
 	}
@@ -647,7 +648,7 @@ func TestIssueRandomWithNilReaderReturnsError(t *testing.T) {
 	now := time.Unix(1_747_180_800, 0).UTC()
 	binding := Binding{Provider: "zalo", PlatformType: "web", SessionID: "sess-1", DeviceID: "dev-1", Nonce: "nonce-1"}
 
-	_, err := IssueRandom(binding, now, nil)
+	_, _, err := IssueRandom(binding, now, nil)
 	if !errors.Is(err, ErrEntropyDepleted) {
 		t.Fatalf("IssueRandom(nil reader) = %v, want ErrEntropyDepleted", err)
 	}
@@ -656,7 +657,7 @@ func TestIssueRandomWithNilReaderReturnsError(t *testing.T) {
 func TestVerifyWithContextValidationFailure(t *testing.T) {
 	now := time.Unix(1_747_180_800, 0).UTC()
 	binding := Binding{Provider: "zalo", PlatformType: "web", SessionID: "sess-1", DeviceID: "dev-1", Nonce: "nonce-1"}
-	challenge, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
+	challenge, _, err := IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), DefaultConfig())
 	if err != nil {
 		t.Fatalf("IssueReference: %v", err)
 	}

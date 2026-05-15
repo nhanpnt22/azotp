@@ -12,7 +12,7 @@
     "notes": [
       "All canonical_context values are byte-exact",
       "All hashes are lowercase hex",
-      "OTP is lowercase internal representation"
+      "OTP is base57 and case-sensitive"
     ]
   },
 
@@ -36,9 +36,9 @@
       "canonical_context": "v:1:1|p:4:zalo|pt:3:web|d:10:web:abc123|s:4:s7d9|n:4:p4t2|t:8:28564231",
 
       "expected": {
-        "otp": "kqmx",
-        "otp_hash_hex": "6f1ed002ab5595859014ebf0951522d9",
-        "binding_hash_hex": "c4ca4238a0b923820dcc509a6f75849b"
+        "otp": "6aWt",
+        "otp_hash_hex": "0b5488a9e55e06e6492aaf4cff4cd818",
+        "binding_hash_hex": "3cca3509dad628a6611cb7126a7ad330"
       }
     },
 
@@ -60,9 +60,9 @@
       "canonical_context": "v:1:1|p:4:zalo|pt:3:web|d:10:web:abc123|s:4:s7d9|n:4:xxxx|t:8:28564231",
 
       "expected": {
-        "otp": "jzpa",
-        "otp_hash_hex": "8f14e45fceea167a5a36dedd4bea2543",
-        "binding_hash_hex": "45c48cce2e2d7fbdea1afc51c7c6ad26"
+        "otp": "mk83",
+        "otp_hash_hex": "5ce9f39effadb168d2a2aa0d79843db8",
+        "binding_hash_hex": "91262058d7920ba1aaedaa7f9a247a30"
       }
     },
 
@@ -84,9 +84,9 @@
       "canonical_context": "v:1:1|p:4:zalo|pt:3:ios|d:10:web:abc123|s:4:s7d9|n:4:p4t2|t:8:28564231",
 
       "expected": {
-        "otp": "mbxk",
-        "otp_hash_hex": "1679091c5a880faf6fb5e6087eb1b2dc",
-        "binding_hash_hex": "8f14e45fceea167a5a36dedd4bea2543"
+        "otp": "jF3s",
+        "otp_hash_hex": "11c5b5498356c09b4ece7e139b955d03",
+        "binding_hash_hex": "948c6293893de3bf0bf030aa1747076e"
       }
     },
 
@@ -108,16 +108,16 @@
       "canonical_context": "v:1:1|p:4:zalo|pt:3:web|d:10:web:abc123|s:4:s7d9|n:4:p4t2|t:8:28564232",
 
       "expected": {
-        "otp": "rzlm",
-        "otp_hash_hex": "c9f0f895fb98ab9159f51fd0297e236d",
-        "binding_hash_hex": "eccbc87e4b5ce2fe28308fd9f2a7baf3"
+        "otp": "YnrZ",
+        "otp_hash_hex": "0a9570137a8bd692b0453e199486601c",
+        "binding_hash_hex": "57f2476b8eaf8b5ff01fe80709e44d7b"
       }
     },
 
     {
       "id": "V005",
       "type": "verification",
-      "description": "case-insensitive input",
+      "description": "case-sensitive input",
 
       "input": {
         "stored_otp": "kqmx",
@@ -125,8 +125,8 @@
       },
 
       "expected": {
-        "normalized": "kqmx",
-        "valid": true
+        "valid": false,
+        "error": "INVALID_OTP"
       }
     },
 

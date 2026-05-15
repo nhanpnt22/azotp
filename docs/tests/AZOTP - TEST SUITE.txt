@@ -64,7 +64,13 @@ A. REFERENCE MODE
 B. RANDOM MODE
 
 - OTP length == 4
-- characters ∈ [a-z]
+- characters ∈ base57 alphabet
+- OTP validation is case-sensitive
+
+BASE57 ALPHABET:
+
+ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz123456789
+- excluded characters: I, O, l, 0
 - entropy source MUST be CSPRNG
 
 ------------------------------------------------------------
@@ -117,6 +123,7 @@ SUCCESS CASE:
 FAILURE CASES:
 
 - wrong OTP → FAIL + used = true
+- case-only mismatch (e.g., `abCD` vs `ABcd`) → FAIL + used = true
 - expired OTP → FAIL
 - reused OTP → FAIL
 - binding mismatch → FAIL
@@ -174,7 +181,7 @@ IX. NONCE TESTS
 
 ASSERT:
 
-nonce reuse ALWAYS rejected
+nonce reuse ALWAYS rejected (service storage/transaction layer)
 
 ============================================================
 X. DEVICE + PLATFORM TESTS
@@ -355,7 +362,7 @@ REQUIREMENTS:
 - MUST use UTF-8 byte-length consistently
 - MUST NOT:
   - trim inputs
-  - normalize strings
+  - normalize canonical_context field strings
   - mutate values
 - MUST share identical formatting logic across languages
 

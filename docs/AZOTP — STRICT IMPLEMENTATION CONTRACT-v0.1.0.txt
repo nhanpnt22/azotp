@@ -115,6 +115,33 @@ FAIL IF:
 - platform_type missing or invalid
 
 ============================================================
+III-A. OTP ALPHABET LOCK
+============================================================
+
+REQUIREMENTS:
+
+- OTP length MUST be exactly 4 characters
+- OTP alphabet MUST be exactly:
+
+  ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz123456789
+
+- OTP handling MUST be case-sensitive
+
+------------------------------------------------------------
+
+FORBIDDEN:
+
+- case normalization (toLower / toUpper)
+- accepting characters outside the locked alphabet
+
+------------------------------------------------------------
+
+FAIL IF:
+
+- case normalization is used
+- any non-alphabet character is accepted
+
+============================================================
 IV. HASH SIZE LOCK
 ============================================================
 

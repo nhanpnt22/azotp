@@ -7,8 +7,9 @@ Human-centered one-time passwords for the AZOTP v0.1.0 reference architecture.
 ## Locked traits
 
 - Default mode: `reference`
-- OTP format: `4` lowercase letters
-- Alphabet: `a-z`
+- OTP format: `4` base57 characters
+- Alphabet: `ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz123456789`
+- Alphabet exclusions: `I`, `O`, `l`, `0`
 - Visible expiry: `60s`
 - Backend grace window: `90s`
 - Attempts per OTP: `1`
@@ -49,9 +50,9 @@ func IsValid(value string) bool
 func ValidateBinding(binding Binding) error
 func CanonicalBindingInput(binding Binding, now time.Time) (string, error)
 func CanonicalContextWithTimeBucket(binding Binding, now time.Time) (string, error)
-func IssueReference(binding Binding, now time.Time, reader io.Reader, config Config) (*Challenge, error)
-func Issue(binding Binding, now time.Time, reader io.Reader) (*Challenge, error)
-func IssueRandom(binding Binding, now time.Time, reader io.Reader) (*Challenge, error)
+func IssueReference(binding Binding, now time.Time, reader io.Reader, config Config) (*Challenge, string, error)
+func Issue(binding Binding, now time.Time, reader io.Reader) (*Challenge, string, error)
+func IssueRandom(binding Binding, now time.Time, reader io.Reader) (*Challenge, string, error)
 func Cooldown(sequence int) time.Duration
 ```
 
@@ -68,7 +69,6 @@ type Challenge struct {
     ID               string
     Mode             Mode
     Context          string
-    OTP              string
     Binding          Binding
     IssuedAt         time.Time
     VisibleExpiresAt time.Time
@@ -89,11 +89,18 @@ See `examples/reference-mode` for a runnable program that injects `Config` direc
 
 This package implements the AZOTP v0.1.0 **HARDENED** specification with the following guarantees:
 
-- **Deterministic Derivation:** Reference mode uses BLAKE3-256(server_secret + canonical_context), projected to base26 lowercase
+- **Deterministic Derivation:** Reference mode uses BLAKE3-256(server_secret + canonical_context), projected to base57 alphabet
 - **Constant-Time Comparison:** OTP and binding verification use `crypto/subtle.ConstantTimeCompare` to prevent timing side-channels
 - **Single-Use Enforcement:** Each OTP validates exactly once; wrong OTP, wrong binding, or expiry invalidates immediately
-- **Replay Protection:** Binding hash (BLAKE3-128) + nonce uniqueness + single-use prevents replay attacks
+- **Replay Protection:** Binding hash (BLAKE3-128) + single-use in package; nonce uniqueness must be enforced by the service storage layer
 - **Cryptographic Hash:** BLAKE3-128 for both OTP hashes and binding hashes (16 bytes exact)
+- **Case Sensitivity:** OTP input is case-sensitive; no normalization is performed
+
+## Migration Note
+
+- v0.1.0 now uses base57 output instead of base26 lowercase.
+- Existing integrations must stop uppercasing/lowercasing OTP input.
+- Legacy base26-only OTP validators are incompatible and must be updated.
 
 ## Requirements
 
@@ -171,9 +178,9 @@ Provides byte-exact test data for:
 
 ## Notes
 
-- Reference Mode is the default. It computes `blake3-256(server_secret + canonical_context)` and projects the digest into base26 lowercase output.
+- Reference Mode is the default. It computes `blake3-256(server_secret + canonical_context)` and projects the digest into base57 output.
 - `AZOTP_SERVER_SECRET` is supplied by the caller via `Config.ServerSecret` and defaults to `azotp` when empty.
 - Challenge IDs use the local `id57` package for 12-character human-readable identifiers.
 - Binding canonicalization is provider-aware and uses the same exact length-prefixed style used by the sibling deterministic packages.
-- Verification is single-attempt: wrong OTP, wrong binding, or expiry invalidates the challenge immediately, and OTP input is case-insensitive.
+- Verification is single-attempt: wrong OTP, wrong binding, or expiry invalidates the challenge immediately, and OTP input is case-sensitive.
 - Random Mode remains available explicitly for fallback or interoperability flows.

@@ -21,7 +21,7 @@ func main() {
 		Nonce:        "nonce-p4t2",
 	}
 
-	challenge, err := issueChallenge(config, binding, now)
+	challenge, otp, err := issueChallenge(config, binding, now)
 	if err != nil {
 		panic(err)
 	}
@@ -29,7 +29,7 @@ func main() {
 	fmt.Println("mode:", challenge.Mode)
 	fmt.Println("secret:", redactSecret(config.ServerSecret))
 	fmt.Println("challenge_id:", challenge.ID)
-	fmt.Println("otp:", strings.ToUpper(challenge.OTP))
+	fmt.Println("otp:", otp)
 	fmt.Println("visible_expires_at:", challenge.VisibleExpiresAt.Format(time.RFC3339))
 	fmt.Println("grace_expires_at:", challenge.GraceExpiresAt.Format(time.RFC3339))
 }
@@ -43,7 +43,7 @@ func loadConfigFromEnvironment() azotp.Config {
 	return azotp.Config{ServerSecret: secret}
 }
 
-func issueChallenge(config azotp.Config, binding azotp.Binding, now time.Time) (*azotp.Challenge, error) {
+func issueChallenge(config azotp.Config, binding azotp.Binding, now time.Time) (*azotp.Challenge, string, error) {
 	return azotp.IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), config)
 }
 

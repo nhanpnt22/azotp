@@ -21,17 +21,7 @@ func main() {
 		Nonce:        "nonce-p4t2",
 	}
 
-	challenge, err := azotp.IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), config)
-	if err != nil {
-		panic(err)
-	}
-
-	context, err := azotp.CanonicalBindingInput(binding, now)
-	if err != nil {
-		panic(err)
-	}
-
-	otp, err := azotp.GenerateReference(context, now, config)
+	challenge, otp, err := azotp.IssueReference(binding, now, bytes.NewReader(bytes.Repeat([]byte{0}, 20)), config)
 	if err != nil {
 		panic(err)
 	}
@@ -39,7 +29,7 @@ func main() {
 	fmt.Println("mode:", challenge.Mode)
 	fmt.Println("secret:", config.ServerSecret)
 	fmt.Println("challenge_id:", challenge.ID)
-	fmt.Println("otp:", strings.ToUpper(otp))
+	fmt.Println("otp:", otp)
 	fmt.Println("visible_expires_at:", challenge.VisibleExpiresAt.Format(time.RFC3339))
 	fmt.Println("grace_expires_at:", challenge.GraceExpiresAt.Format(time.RFC3339))
 }

@@ -4,7 +4,7 @@
 //
 // Locked protocol traits (IMMUTABLE):
 //
-//   - OTP format: 4 lowercase letters (base26)
+//   - OTP format: 4 characters from base57 alphabet
 //   - Deterministic derivation hash: BLAKE3-256
 //   - Stored hash size: BLAKE3-128 (16 bytes exact)
 //   - Binding hash: BLAKE3-128 of canonical context
@@ -14,7 +14,7 @@
 //   - Binding: provider + device_id + session_id + nonce + time_bucket
 //   - Canonical format: v1|<len>:<value>|<len>:<value>|...
 //   - Constant-time comparison: REQUIRED
-//   - Replay protection: binding_hash + nonce uniqueness + single-use
+//   - Replay protection: binding_hash + service-enforced nonce uniqueness + single-use
 package azotp
 
 import (
@@ -33,7 +33,7 @@ import (
 const (
 	Version           = "v0.1.0"
 	ProtocolVersion   = "1"
-	Alphabet          = "abcdefghijklmnopqrstuvwxyz"
+	Alphabet          = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz123456789"
 	OTPLength         = 4
 	ChallengeIDLength = 12
 	VisibleExpiry     = 60 * time.Second
@@ -135,7 +135,6 @@ type Challenge struct {
 	ID               string
 	Mode             Mode
 	Context          string // Canonical context string
-	OTP              string // Plaintext OTP for reference (internal only)
 	OTPHash          []byte // BLAKE3-128 hash of OTP (16 bytes)
 	BindingHash      []byte // BLAKE3-128 hash of canonical context (16 bytes)
 	Binding          Binding
@@ -276,60 +275,62 @@ func MustGenerateRandom(reader io.Reader) string {
 	return value
 }
 
-func IssueReference(binding Binding, now time.Time, reader io.Reader, config Config) (*Challenge, error) {
+func IssueReference(binding Binding, now time.Time, reader io.Reader, config Config) (*Challenge, string, error) {
 	if err := ValidateBinding(binding); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if reader == nil {
-		return nil, ErrEntropyDepleted
+		return nil, "", ErrEntropyDepleted
 	}
 
 	id, err := generateChallengeID(reader)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// Generate OTP using canonical context with time_bucket.
 	bindingContext, err := CanonicalBindingInput(binding, now)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	otp, err := GenerateReference(bindingContext, now, config)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
+	otpHash := blake3_128([]byte(otp))
 
-	return newChallenge(ModeReference, bindingContext, binding, id, otp, now), nil
+	return newChallenge(ModeReference, bindingContext, binding, id, otpHash[:], now), otp, nil
 }
 
-func Issue(binding Binding, now time.Time, reader io.Reader) (*Challenge, error) {
+func Issue(binding Binding, now time.Time, reader io.Reader) (*Challenge, string, error) {
 	return IssueReference(binding, now, reader, DefaultConfig())
 }
 
-func IssueRandom(binding Binding, now time.Time, reader io.Reader) (*Challenge, error) {
+func IssueRandom(binding Binding, now time.Time, reader io.Reader) (*Challenge, string, error) {
 	if err := ValidateBinding(binding); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if reader == nil {
-		return nil, ErrEntropyDepleted
+		return nil, "", ErrEntropyDepleted
 	}
 
 	id, err := generateChallengeID(reader)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	otp, err := GenerateRandom(reader)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
+	otpHash := blake3_128([]byte(otp))
 
 	bindingContext, err := CanonicalBindingInput(binding, now)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	return newChallenge(ModeRandom, bindingContext, binding, id, otp, now), nil
+	return newChallenge(ModeRandom, bindingContext, binding, id, otpHash[:], now), otp, nil
 }
 
 func (challenge *Challenge) Verify(otp string, binding Binding, now time.Time) error {
@@ -364,6 +365,10 @@ func (challenge *Challenge) Verify(otp string, binding Binding, now time.Time) e
 	// Compute binding hash for verification
 	bindingHashInput := recomputedContext
 	recomputedHash := blake3_128([]byte(bindingHashInput))
+	if len(challenge.BindingHash) != BindingHashSize || len(challenge.OTPHash) != OTPHashSize {
+		challenge.invalidate(now)
+		return ErrOTPInvalidated
+	}
 
 	// Constant-time comparison of binding hashes
 	if !constantTimeEqual(recomputedHash[:], challenge.BindingHash) {
@@ -467,10 +472,7 @@ func generateReferenceWithSecret(context, serverSecret string, now time.Time) (s
 	return otpFromDigest(digest[:])
 }
 
-func newChallenge(mode Mode, context string, binding Binding, id, otp string, now time.Time) *Challenge {
-	// Compute OTP hash (BLAKE3-128)
-	otpHash := blake3_128([]byte(otp))
-
+func newChallenge(mode Mode, context string, binding Binding, id string, otpHash []byte, now time.Time) *Challenge {
 	// Compute binding hash from context (BLAKE3-128)
 	// For reference mode, context is canonical binding input
 	bindingHashInput := context
@@ -486,8 +488,7 @@ func newChallenge(mode Mode, context string, binding Binding, id, otp string, no
 		ID:               id,
 		Mode:             mode,
 		Context:          context,
-		OTP:              otp, // Plaintext OTP (for reference only)
-		OTPHash:          otpHash[:],
+		OTPHash:          append([]byte(nil), otpHash...),
 		BindingHash:      bindingHash[:],
 		Binding:          binding,
 		IssuedAt:         now,
@@ -512,7 +513,9 @@ func readAlphabetByte(reader io.Reader) (byte, error) {
 		if _, err := io.ReadFull(reader, sample[:]); err != nil {
 			return 0, fmt.Errorf("%w: %v", ErrEntropyDepleted, err)
 		}
-		if sample[0] >= 234 {
+		// Rejection sampling keeps distribution uniform for base57.
+		// Largest multiple of 57 below 256 is 228.
+		if sample[0] >= 228 {
 			continue
 		}
 		return Alphabet[int(sample[0])%len(Alphabet)], nil
@@ -552,14 +555,10 @@ func normalizeOTP(value string) (string, error) {
 	buffer := make([]byte, OTPLength)
 	for index := 0; index < len(value); index++ {
 		ch := value[index]
-		switch {
-		case ch >= 'a' && ch <= 'z':
-			buffer[index] = ch
-		case ch >= 'A' && ch <= 'Z':
-			buffer[index] = ch + ('a' - 'A')
-		default:
+		if !alphabetSet[ch] {
 			return "", fmt.Errorf("%w: character %q at index %d", ErrInvalidOTP, value[index], index)
 		}
+		buffer[index] = ch
 	}
 
 	return string(buffer), nil

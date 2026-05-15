@@ -75,5 +75,5 @@ func expectedOTP(t *testing.T, config azotp.Config) string {
 	if err != nil {
 		t.Fatalf("GenerateReference: unexpected error: %v", err)
 	}
-	return strings.ToUpper(otp)
+	return otp
 }
