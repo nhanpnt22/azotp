@@ -14,6 +14,7 @@ Human-centered one-time passwords for the AZOTP v0.1.0 reference architecture.
 - Backend grace window: `90s`
 - Attempts per OTP: `1`
 - Binding: provider + platform_type + device + session + nonce + time_bucket
+- Allowed `platform_type`: `web`, `ios`, `android`, `desktop`, `embedded`, `other`
 - Config secret: `Config{ServerSecret: ...}` with default `azotp`
 
 ## Install
@@ -92,7 +93,7 @@ This package implements the AZOTP v0.1.0 **HARDENED** specification with the fol
 - **Deterministic Derivation:** Reference mode uses BLAKE3-256(server_secret + canonical_context), projected to base57 alphabet
 - **Constant-Time Comparison:** OTP and binding verification use `crypto/subtle.ConstantTimeCompare` to prevent timing side-channels
 - **Single-Use Enforcement:** Each OTP validates exactly once; wrong OTP, wrong binding, or expiry invalidates immediately
-- **Replay Protection:** Binding hash (BLAKE3-128) + single-use in package; nonce uniqueness must be enforced by the service storage layer
+- **Replay Protection:** Binding hash (BLAKE3-128) + single-use in package; nonce uniqueness and session semantics must be enforced by the service storage/transaction layer
 - **Cryptographic Hash:** BLAKE3-128 for both OTP hashes and binding hashes (16 bytes exact)
 - **Case Sensitivity:** OTP input is case-sensitive; no normalization is performed
 
@@ -182,5 +183,6 @@ Provides byte-exact test data for:
 - `AZOTP_SERVER_SECRET` is supplied by the caller via `Config.ServerSecret` and defaults to `azotp` when empty.
 - Challenge IDs use the local `id57` package for 12-character human-readable identifiers.
 - Binding canonicalization is provider-aware and uses the same exact length-prefixed style used by the sibling deterministic packages.
+- Accepted `platform_type` values are `web`, `ios`, `android`, `desktop`, `embedded`, and `other`.
 - Verification is single-attempt: wrong OTP, wrong binding, or expiry invalidates the challenge immediately, and OTP input is case-sensitive.
 - Random Mode remains available explicitly for fallback or interoperability flows.
